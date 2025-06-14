@@ -17,6 +17,13 @@ class PhasePromptGenerator:
         self.evidence_dir = self.project_dir / ".cc_automator" / "evidence"
         self.milestone_dir = self.project_dir / ".cc_automator" / "milestones"
         
+        # Initialize context manager
+        try:
+            from context_manager import ContextManager
+            self.context_manager = ContextManager(project_dir)
+        except ImportError:
+            self.context_manager = None
+        
     def generate_prompt(self, phase_type: str, milestone: Milestone, 
                        previous_phase_output: Optional[str] = None) -> str:
         """Generate a detailed prompt for a specific phase"""
@@ -24,9 +31,24 @@ class PhasePromptGenerator:
         # Get base prompt
         prompt = self._get_base_prompt(phase_type, milestone)
         
-        # Add context from previous phase if available
-        if previous_phase_output:
-            prompt = self._add_previous_context(prompt, phase_type, previous_phase_output)
+        # Use context manager if available for smarter context
+        if self.context_manager:
+            context = self.context_manager.get_phase_context(
+                phase_type, previous_phase_output, milestone.number
+            )
+            if context:
+                prompt = f"{context}\n\n{prompt}"
+                # Save the output for future reference
+                if previous_phase_output:
+                    prev_phase = self._get_previous_phase_type(phase_type)
+                    if prev_phase:
+                        self.context_manager.save_phase_output(
+                            prev_phase, milestone.number, previous_phase_output
+                        )
+        else:
+            # Fallback to old method
+            if previous_phase_output:
+                prompt = self._add_previous_context(prompt, phase_type, previous_phase_output)
             
         # Add evidence requirements
         prompt = self._add_evidence_requirements(prompt, phase_type, milestone)
@@ -36,6 +58,22 @@ class PhasePromptGenerator:
             prompt = self._add_self_healing_reminder(prompt)
             
         return prompt
+    
+    def _get_previous_phase_type(self, current_phase: str) -> Optional[str]:
+        """Get the previous phase type in the sequence"""
+        phase_sequence = [
+            "research", "planning", "implement", "lint", 
+            "typecheck", "test", "integration", "e2e", "commit"
+        ]
+        
+        try:
+            idx = phase_sequence.index(current_phase)
+            if idx > 0:
+                return phase_sequence[idx - 1]
+        except ValueError:
+            pass
+        
+        return None
         
     def _get_base_prompt(self, phase_type: str, milestone: Milestone) -> str:
         """Get the base prompt for a phase type"""
