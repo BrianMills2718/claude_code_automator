@@ -31,25 +31,63 @@ CC_AUTOMATOR3 orchestrates Claude Code through a 9-phase development process for
 - Git repository
 - Standard Python development tools (flake8, mypy, pytest)
 
-## Quick Start
+## Installation
 
-1. Clone the repository:
+1. Clone to a permanent location:
 ```bash
+cd ~
 git clone https://github.com/BrianMills2718/claude_code_automator.git
 cd claude_code_automator
+./install.sh
+source ~/.bashrc  # Or open new terminal
 ```
 
-2. Create a new project:
+## Quick Start
+
+1. Create a new project directory:
 ```bash
-python setup.py --project my_project
-# Follow the interactive prompts to configure your project
+mkdir ~/projects/my_awesome_app
+cd ~/projects/my_awesome_app
+```
+
+2. Set up the project:
+```bash
+cc-setup --project .
+# Follow the interactive Q&A to configure your project
 ```
 
 3. Run the automator:
 ```bash
-cd my_project
-python ../run.py
+cc-run
+# Sit back and watch as your project is built autonomously
 ```
+
+## Using for Multiple Projects
+
+The automator is designed to be reused across many projects:
+
+```bash
+# Project 1: Web API
+cd ~/projects/my_api
+cc-setup --project .
+cc-run
+
+# Project 2: CLI Tool  
+cd ~/projects/my_cli_tool
+cc-setup --project .
+cc-run
+
+# Project 3: Data Pipeline
+cd ~/projects/my_pipeline
+cc-setup --project .
+cc-run
+```
+
+Each project maintains its own:
+- CLAUDE.md configuration
+- .cc_automator/ working directory
+- Progress tracking
+- Generated code
 
 ## Project Structure
 
