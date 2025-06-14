@@ -221,10 +221,14 @@ Write to it: PHASE_COMPLETE"""
         # Build command
         cmd = [
             "claude", "-p", async_prompt,
-            "--output-format", "json",
+            "--output-format", "stream-json" if self.verbose else "json",
             "--max-turns", str(phase.max_turns),
             "--dangerously-skip-permissions"  # Required for autonomous file operations
         ]
+        
+        # Add verbose flag for full tracing
+        if self.verbose:
+            cmd.append("--verbose")
         
         if phase.allowed_tools:
             cmd.extend(["--allowedTools", ",".join(phase.allowed_tools)])
@@ -256,11 +260,42 @@ Write to it: PHASE_COMPLETE"""
                 phase.error = f"Process exited immediately: {stderr or stdout}"
                 return self._phase_to_dict(phase)
             
+            # Create log file for verbose output
+            if self.verbose:
+                log_dir = self.working_dir / ".cc_automator" / "logs"
+                log_dir.mkdir(exist_ok=True)
+                log_file = log_dir / f"{phase.name}_{int(time.time())}.log"
+                log_handle = open(log_file, 'w')
+                print(f"Logging phase output to: {log_file}")
+            
             # Poll for completion
             poll_interval = 15  # Check every 15 seconds
             max_polls = phase.timeout_seconds // poll_interval
             
             for poll_count in range(max_polls):
+                # In verbose mode, capture streaming output
+                if self.verbose:
+                    # Non-blocking read of stdout
+                    import select
+                    while True:
+                        ready, _, _ = select.select([process.stdout], [], [], 0.1)
+                        if ready:
+                            line = process.stdout.readline()
+                            if line:
+                                log_handle.write(line)
+                                log_handle.flush()
+                                # Parse streaming JSON for insights
+                                try:
+                                    data = json.loads(line.strip())
+                                    if data.get("type") == "tool_use":
+                                        print(f"  Tool: {data.get('name')} - {data.get('parameters', {})}")
+                                    elif data.get("type") == "tool_result":
+                                        print(f"  Result: {data.get('output', '')[:100]}...")
+                                except:
+                                    pass
+                        else:
+                            break
+                
                 # Check for completion FIRST
                 if completion_marker.exists():
                     print(f"✓ Phase {phase.name} completed!")
@@ -335,6 +370,10 @@ Write to it: PHASE_COMPLETE"""
             phase.error = f"Execution error: {str(e)}"
             
         finally:
+            # Close log file if verbose
+            if self.verbose and 'log_handle' in locals():
+                log_handle.close()
+                
             phase.end_time = datetime.now()
             self._save_checkpoint(phase)
             self._save_milestone_evidence(phase)
