@@ -51,6 +51,9 @@ class ProjectSetup:
         # Step 5: Create project structure
         self._create_project_structure()
         
+        # Step 6: Create initial git commit
+        self._create_initial_commit()
+        
         print("\n✓ Setup complete! Your project is ready for automated development.")
         print(f"\nTo start development, run:")
         print(f"  python {self.cc_automator_dir}/run.py")
@@ -310,6 +313,44 @@ See CLAUDE.md for project specifications and milestones.
 """)
             print("  ✓ Created README.md")
             
+    def _create_initial_commit(self):
+        """Create an initial git commit if there are no commits"""
+        import subprocess
+        
+        # Check if there are any commits
+        result = subprocess.run(
+            ["git", "rev-list", "--count", "HEAD"],
+            cwd=self.project_dir,
+            capture_output=True,
+            text=True
+        )
+        
+        # If no commits (command fails or returns 0)
+        if result.returncode != 0 or result.stdout.strip() == "0":
+            print("\nCreating initial git commit...")
+            
+            # Add all files
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.project_dir,
+                capture_output=True
+            )
+            
+            # Create initial commit
+            result = subprocess.run(
+                ["git", "commit", "-m", "Initial commit - CC_AUTOMATOR3 project setup"],
+                cwd=self.project_dir,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("  ✓ Created initial git commit")
+            else:
+                print("  ⚠ Could not create initial commit:", result.stderr)
+        else:
+            print("  ✓ Git repository already has commits")
+            
     def create_example_project(self, example_type: str = "calculator"):
         """Create an example project configuration"""
         examples = {
@@ -393,6 +434,7 @@ def main():
     if args.example:
         setup.create_example_project(args.example)
         setup._create_project_structure()
+        setup._create_initial_commit()  # Add initial commit
         print(f"\nExample project ready! Run:")
         print(f"  python {Path(__file__).parent}/run.py")
         return 0
