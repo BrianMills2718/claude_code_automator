@@ -1,0 +1,12 @@
+name: research
+description: Research phase for milestone implementation
+args:
+  - name: milestone_name
+    description: Name of the milestone
+    required: true
+  - name: milestone_number
+    description: Milestone number
+    required: true
+  - name: success_criteria
+    description: Success criteria for this milestone
+    required: true

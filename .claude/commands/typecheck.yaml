@@ -1,0 +1,3 @@
+name: typecheck
+description: Fix mypy type checking errors
+args: []
