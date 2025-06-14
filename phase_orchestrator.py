@@ -218,17 +218,14 @@ class PhaseOrchestrator:
 When done, create file: {completion_marker}
 Write to it: PHASE_COMPLETE"""
         
-        # Build command - always use stream-json for logging
+        # Build command - stream-json requires --verbose flag
         cmd = [
             "claude", "-p", async_prompt,
             "--output-format", "stream-json",
             "--max-turns", str(phase.max_turns),
-            "--dangerously-skip-permissions"  # Required for autonomous file operations
+            "--dangerously-skip-permissions",  # Required for autonomous file operations
+            "--verbose"  # Required for stream-json output format
         ]
-        
-        # Add verbose flag for full tracing when in verbose mode
-        if self.verbose:
-            cmd.append("--verbose")
         
         if phase.allowed_tools:
             cmd.extend(["--allowedTools", ",".join(phase.allowed_tools)])
@@ -241,10 +238,11 @@ Write to it: PHASE_COMPLETE"""
         
         try:
             # Start Claude Code process
+            # Redirect stderr to DEVNULL unless verbose to suppress Claude's verbose output
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stderr=subprocess.DEVNULL if not self.verbose else subprocess.PIPE,
                 text=True,
                 cwd=str(self.working_dir)
             )
