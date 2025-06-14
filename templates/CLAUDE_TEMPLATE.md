@@ -13,6 +13,15 @@
 
 {{MILESTONES}}
 
+## Additional Documentation
+See @README.md for general project information.
+
+## CC_AUTOMATOR3 Instructions
+- Each phase will receive its own CLAUDE.md with specific instructions
+- Use subagents when prompted for verification and exploration
+- Save outputs to specified milestone directories
+- Follow the phase-specific guidance carefully
+
 ## Development Standards
 
 ### Code Quality
