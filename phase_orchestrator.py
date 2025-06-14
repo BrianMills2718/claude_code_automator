@@ -85,9 +85,10 @@ class StreamingJSONProcessor:
 class PhaseOrchestrator:
     """Orchestrates execution of isolated phases using Claude Code CLI"""
     
-    def __init__(self, project_name: str, working_dir: Optional[str] = None):
+    def __init__(self, project_name: str, working_dir: Optional[str] = None, verbose: bool = False):
         self.project_name = project_name
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
+        self.verbose = verbose
         self.phases: List[Phase] = []
         self.session_manager = {}  # phase_name -> session_id
         self.checkpoints_dir = self.working_dir / ".cc_automator" / "checkpoints"
@@ -107,16 +108,23 @@ class PhaseOrchestrator:
     def execute_phase(self, phase: Phase) -> Dict[str, Any]:
         """Execute a single phase using Claude Code CLI with async completion"""
         
-        # Print phase header
-        print(f"\n{'='*60}")
-        print(f"Phase: {phase.name}")
-        print(f"{'='*60}")
-        print(f"Description: {phase.description}")
-        print(f"Think Mode: {phase.think_mode or 'None'}")
-        print(f"Max Turns: {phase.max_turns}")
-        print(f"Timeout: {phase.timeout_seconds}s")
-        print(f"Allowed Tools: {', '.join(phase.allowed_tools)}")
-        print()
+        # Print phase header (minimal by default)
+        if hasattr(self, 'verbose') and self.verbose:
+            print(f"\n{'='*60}")
+            print(f"Phase: {phase.name}")
+            print(f"{'='*60}")
+            print(f"Description: {phase.description}")
+            print(f"Think Mode: {phase.think_mode or 'None'}")
+            print(f"Max Turns: {phase.max_turns}")
+            print(f"Timeout: {phase.timeout_seconds}s")
+            print(f"Allowed Tools: {', '.join(phase.allowed_tools)}")
+            print()
+        else:
+            # Minimal output
+            print(f"\n{'='*60}")
+            print(f"Phase: {phase.name}")
+            print(f"{'='*60}")
+            print(f"Description: {phase.description}")
         
         # Mark phase as running
         phase.status = PhaseStatus.RUNNING
@@ -219,9 +227,11 @@ Write to it: PHASE_COMPLETE"""
         if phase.allowed_tools:
             cmd.extend(["--allowedTools", ",".join(phase.allowed_tools)])
         
-        print(f"Starting async execution for {phase.name}")
-        print(f"Completion marker: {completion_marker}")
-        print(f"Command: {' '.join(cmd)}")
+        if self.verbose:
+            print(f"Starting async execution for {phase.name}")
+            print(f"Completion marker: {completion_marker}")
+        else:
+            print(f"Starting {phase.name} phase...")
         
         try:
             # Start Claude Code process

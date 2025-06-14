@@ -17,6 +17,7 @@ from preflight_validator import PreflightValidator
 from progress_tracker import ProgressTracker
 from milestone_decomposer import MilestoneDecomposer
 from phase_prompt_generator import PhasePromptGenerator
+from output_filter import OutputFilter
 
 # Phase 4 imports
 try:
@@ -43,13 +44,14 @@ class CCAutomatorRunner:
     
     def __init__(self, project_dir: Optional[Path] = None, resume: bool = False,
                  use_parallel: bool = True, use_docker: bool = False, use_visual: bool = True,
-                 specific_milestone: Optional[int] = None):
+                 specific_milestone: Optional[int] = None, verbose: bool = False):
         self.project_dir = Path(project_dir) if project_dir else Path.cwd()
         self.resume = resume
         self.use_parallel = use_parallel and PARALLEL_AVAILABLE
         self.use_docker = use_docker and DOCKER_AVAILABLE
         self.use_visual = use_visual and VISUAL_AVAILABLE
         self.specific_milestone = specific_milestone
+        self.verbose = verbose
         
         # Initialize components
         self.orchestrator = None
@@ -60,6 +62,7 @@ class CCAutomatorRunner:
         self.progress_tracker = None
         self.decomposer = MilestoneDecomposer(self.project_dir)
         self.prompt_generator = PhasePromptGenerator(self.project_dir)
+        self.output_filter = OutputFilter(verbose=verbose)
         
         # Execution state
         self.milestones = []
@@ -162,7 +165,7 @@ class CCAutomatorRunner:
         print(f"✓ Found {len(self.milestones)} milestones")
         
         # Initialize orchestrator
-        self.orchestrator = PhaseOrchestrator(project_name, str(self.project_dir))
+        self.orchestrator = PhaseOrchestrator(project_name, str(self.project_dir), verbose=self.verbose)
         self.progress_tracker = ProgressTracker(self.project_dir, project_name)
         
         return True
@@ -294,7 +297,7 @@ class CCAutomatorRunner:
                 )
                 
                 # Capture output for next phase
-                if phase_type in ["research", "planning"]:
+                if phase_type in ["research", "planning", "implement"]:
                     # Try to read the output file
                     output_file = (self.project_dir / ".cc_automator" / "milestones" / 
                                  f"milestone_{milestone.number}" / f"{phase_type}.md")
@@ -302,7 +305,27 @@ class CCAutomatorRunner:
                         with open(output_file) as f:
                             previous_output = f.read()  # Read entire file
                     else:
-                        previous_output = phase.evidence or ""
+                        # For implement phase, capture what was built
+                        if phase_type == "implement":
+                            # Read main.py and any src files to show what was implemented
+                            implemented_files = []
+                            if (self.project_dir / "main.py").exists():
+                                with open(self.project_dir / "main.py") as f:
+                                    implemented_files.append(f"### main.py\n```python\n{f.read()}\n```")
+                            
+                            src_dir = self.project_dir / "src"
+                            if src_dir.exists():
+                                for py_file in src_dir.glob("**/*.py"):
+                                    with open(py_file) as f:
+                                        rel_path = py_file.relative_to(self.project_dir)
+                                        implemented_files.append(f"\n### {rel_path}\n```python\n{f.read()}\n```")
+                            
+                            if implemented_files:
+                                previous_output = "## Implemented Files\n\n" + "\n".join(implemented_files)
+                            else:
+                                previous_output = phase.evidence or ""
+                        else:
+                            previous_output = phase.evidence or ""
                 
                 p_idx += 1
         
@@ -430,13 +453,31 @@ class CCAutomatorRunner:
                 self.session_manager.add_session(phase_name, phase.session_id)
                 
             # For certain phases, capture output for next phase
-            if phase_type in ["research", "planning"]:
+            if phase_type in ["research", "planning", "implement"]:
                 # Try to read the output file
                 output_file = (self.project_dir / ".cc_automator" / "milestones" / 
                              f"milestone_{milestone.number}" / f"{phase_type}.md")
                 if output_file.exists():
                     with open(output_file) as f:
                         previous_output = f.read()  # Read entire file, no limit
+                else:
+                    # For implement phase, capture what was built
+                    if phase_type == "implement":
+                        # Read main.py and any src files to show what was implemented
+                        implemented_files = []
+                        if (self.project_dir / "main.py").exists():
+                            with open(self.project_dir / "main.py") as f:
+                                implemented_files.append(f"### main.py\n```python\n{f.read()}\n```")
+                        
+                        src_dir = self.project_dir / "src"
+                        if src_dir.exists():
+                            for py_file in src_dir.glob("**/*.py"):
+                                with open(py_file) as f:
+                                    rel_path = py_file.relative_to(self.project_dir)
+                                    implemented_files.append(f"\n### {rel_path}\n```python\n{f.read()}\n```")
+                        
+                        if implemented_files:
+                            previous_output = "## Implemented Files\n\n" + "\n".join(implemented_files)
                         
             # Display progress
             self.progress_tracker.display_progress()
@@ -510,6 +551,8 @@ def main():
                        help="Enable visual progress display (default: enabled)")
     parser.add_argument("--no-visual", action="store_true",
                        help="Disable visual progress display")
+    parser.add_argument("--verbose", action="store_true",
+                       help="Show verbose output including all phase details")
     
     args = parser.parse_args()
     
@@ -531,7 +574,8 @@ def main():
         use_parallel=use_parallel,
         use_docker=args.docker,
         use_visual=use_visual,
-        specific_milestone=args.milestone
+        specific_milestone=args.milestone,
+        verbose=args.verbose
     )
     
     try:

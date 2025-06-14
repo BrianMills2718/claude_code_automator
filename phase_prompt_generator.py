@@ -171,43 +171,80 @@ Evidence: Show final mypy output with "Success: no issues found".""",
             "test": f"""
 ## Unit Test Phase
 
-Ensure all unit tests pass for Milestone {milestone.number}.
+Create and run unit tests for Milestone {milestone.number}.
 
 ### Tasks:
-1. Run: `pytest tests/unit -xvs`
-2. If tests are missing, create them for the new functionality
-3. Fix any failing tests
-4. Ensure good test coverage for milestone features
-5. Tests should use mocking for external dependencies
+1. Check if tests/unit directory has test files
+2. If no tests exist, create comprehensive unit tests for the implemented functionality
+3. Run: `pytest tests/unit -xvs`
+4. Fix any failing tests
+5. Ensure good test coverage for milestone features
 
-### Test Requirements:
-- Test all functions/methods from this milestone
-- Include edge cases and error conditions
-- Verify success criteria are testable
+### What to Test:
+Based on the implementation, create tests for:
+- All public functions/methods
+- Edge cases (empty inputs, zero values, etc.)
+- Error conditions (invalid inputs, exceptions)
+- Return values and types
+
+### Test Structure:
+```python
+# tests/unit/test_[module_name].py
+import pytest
+from main import function_name  # or from src.module import function
+
+def test_function_normal_case():
+    assert function_name(input) == expected_output
+
+def test_function_edge_case():
+    # Test edge cases
+
+def test_function_error_case():
+    with pytest.raises(ExpectedException):
+        function_name(invalid_input)
+```
 
 ### Evidence Required:
-Show pytest output with all tests passing.
+1. Show created test files
+2. Show pytest output with all tests passing
 """,
 
             "integration": f"""
 ## Integration Test Phase
 
-Ensure components work together correctly for Milestone {milestone.number}.
+Create and run integration tests for Milestone {milestone.number}.
 
 ### Tasks:
-1. Run: `pytest tests/integration -xvs`
-2. Create integration tests if missing
-3. Test component interactions
-4. Verify data flow between modules
-5. Use minimal mocking (only external services)
+1. Check if tests/integration directory has test files
+2. If no tests exist, create integration tests for component interactions
+3. Run: `pytest tests/integration -xvs`
+4. Fix any failing tests
+5. Use minimal mocking (only external services like APIs, databases)
 
-### Integration Points:
-- Test the full workflow for milestone features
-- Verify components integrate properly
-- Ensure error handling works across modules
+### What to Test:
+- How components work together
+- Data flow between modules
+- Error propagation across components
+- Integration with the CLI interface
+
+### Integration Test Example:
+```python
+# tests/integration/test_calculator_cli.py
+import subprocess
+from pathlib import Path
+
+def test_calculator_workflow():
+    # Test the complete workflow
+    result = subprocess.run(['python', 'main.py'], 
+                          input='1\\n5\\n10\\n5\\n', 
+                          capture_output=True, text=True)
+    assert 'Result:' in result.stdout
+    assert '15' in result.stdout  # 5 + 10
+```
 
 ### Evidence Required:
-Show pytest output with all integration tests passing.
+1. Show created integration test files
+2. Show pytest output with all tests passing
 """,
 
             "e2e": f"""
@@ -272,6 +309,9 @@ Show the git commit hash and message.
             "implement": "## Previous Phase: Planning\n\nFollowing the implementation plan:",
             "lint": "## Previous Phase: Implementation\n\nNow cleaning up the code:",
             "typecheck": "## Previous Phase: Linting\n\nNow adding type safety:",
+            "test": "## Previous Phase: Implementation\n\nBased on what was implemented, create tests:",
+            "integration": "## Previous Phase: Unit Tests\n\nNow test component interactions:",
+            "e2e": "## Previous Phase: Integration Tests\n\nFinally, verify the complete system:",
         }
         
         if phase_type in context_intros:
