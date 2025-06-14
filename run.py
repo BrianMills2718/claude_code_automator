@@ -532,8 +532,8 @@ class CCAutomatorRunner:
             if phase.session_id:
                 self.session_manager.add_session(phase_name, phase.session_id)
                 
-            # For certain phases, capture output for next phase
-            if phase_type in ["research", "planning", "implement"]:
+            # Capture output for next phase based on what they need
+            if phase_type in ["research", "planning", "implement", "test", "integration", "e2e"]:
                 # Try to read the output file
                 output_file = (self.project_dir / ".cc_automator" / "milestones" / 
                              f"milestone_{milestone.number}" / f"{phase_type}.md")
@@ -558,6 +558,12 @@ class CCAutomatorRunner:
                         
                         if implemented_files:
                             previous_output = "## Implemented Files\n\n" + "\n".join(implemented_files)
+                    elif phase_type == "test":
+                        # For test phase, pass the test results
+                        previous_output = phase.evidence or ""
+                    elif phase_type == "integration":
+                        # For integration phase, pass integration test results
+                        previous_output = phase.evidence or ""
                         
             # Display progress
             self.progress_tracker.display_progress()

@@ -58,13 +58,13 @@ class ContextManager:
         ),
         
         "test": PhaseContext(
-            needs_previous_output=False,  # Doesn't need typecheck details
+            needs_previous_output=True,  # Needs to know what was implemented
             needs_files=["src/**/*.py", "tests/unit/**/*.py"],  # Source and unit tests
             needs_summary_only=False
         ),
         
         "integration": PhaseContext(
-            needs_previous_output=False,  # Doesn't need unit test details
+            needs_previous_output=True,  # Needs to know what was implemented
             needs_files=["src/**/*.py", "tests/integration/**/*.py"],
             needs_summary_only=False
         ),

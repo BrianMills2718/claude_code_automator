@@ -410,8 +410,8 @@ Write to it: PHASE_COMPLETE"""
         if not self.current_milestone or phase.status != PhaseStatus.COMPLETED:
             return
             
-        # Only save evidence for key phases
-        if phase.name not in ["research", "planning", "implement"]:
+        # Skip evidence saving for mechanical phases that don't produce documents
+        if phase.name in ["lint", "typecheck", "commit"]:
             return
             
         milestone_dir = self.working_dir / ".cc_automator" / "milestones" / f"milestone_{self.current_milestone}"
