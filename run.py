@@ -585,6 +585,13 @@ class CCAutomatorRunner:
             
         print(f"✓ Report saved to: {report_file}")
         
+        # Show where logs are stored
+        log_dir = self.project_dir / ".cc_automator" / "logs"
+        if log_dir.exists():
+            log_files = list(log_dir.glob("*.log"))
+            if log_files:
+                print(f"✓ Phase logs saved to: {log_dir}/ ({len(log_files)} files)")
+        
         # Also save detailed results
         results = {
             "project_dir": str(self.project_dir),

@@ -218,15 +218,15 @@ class PhaseOrchestrator:
 When done, create file: {completion_marker}
 Write to it: PHASE_COMPLETE"""
         
-        # Build command
+        # Build command - always use stream-json for logging
         cmd = [
             "claude", "-p", async_prompt,
-            "--output-format", "stream-json" if self.verbose else "json",
+            "--output-format", "stream-json",
             "--max-turns", str(phase.max_turns),
             "--dangerously-skip-permissions"  # Required for autonomous file operations
         ]
         
-        # Add verbose flag for full tracing
+        # Add verbose flag for full tracing when in verbose mode
         if self.verbose:
             cmd.append("--verbose")
         
@@ -260,12 +260,12 @@ Write to it: PHASE_COMPLETE"""
                 phase.error = f"Process exited immediately: {stderr or stdout}"
                 return self._phase_to_dict(phase)
             
-            # Create log file for verbose output
+            # Always create log file for debugging
+            log_dir = self.working_dir / ".cc_automator" / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_file = log_dir / f"{phase.name}_{int(time.time())}.log"
+            log_handle = open(log_file, 'w')
             if self.verbose:
-                log_dir = self.working_dir / ".cc_automator" / "logs"
-                log_dir.mkdir(exist_ok=True)
-                log_file = log_dir / f"{phase.name}_{int(time.time())}.log"
-                log_handle = open(log_file, 'w')
                 print(f"Logging phase output to: {log_file}")
             
             # Poll for completion
@@ -273,28 +273,31 @@ Write to it: PHASE_COMPLETE"""
             max_polls = phase.timeout_seconds // poll_interval
             
             for poll_count in range(max_polls):
-                # In verbose mode, capture streaming output
-                if self.verbose:
-                    # Non-blocking read of stdout
-                    import select
-                    while True:
-                        ready, _, _ = select.select([process.stdout], [], [], 0.1)
-                        if ready:
-                            line = process.stdout.readline()
-                            if line:
-                                log_handle.write(line)
-                                log_handle.flush()
-                                # Parse streaming JSON for insights
+                # Always capture streaming output to log
+                # Non-blocking read of stdout
+                import select
+                while True:
+                    ready, _, _ = select.select([process.stdout], [], [], 0.1)
+                    if ready:
+                        line = process.stdout.readline()
+                        if line:
+                            log_handle.write(line)
+                            log_handle.flush()
+                            # Parse streaming JSON for insights
+                            if self.verbose:
                                 try:
                                     data = json.loads(line.strip())
                                     if data.get("type") == "tool_use":
                                         print(f"  Tool: {data.get('name')} - {data.get('parameters', {})}")
                                     elif data.get("type") == "tool_result":
-                                        print(f"  Result: {data.get('output', '')[:100]}...")
+                                        result_preview = str(data.get('output', ''))[:100]
+                                        if len(str(data.get('output', ''))) > 100:
+                                            result_preview += "..."
+                                        print(f"  Result: {result_preview}")
                                 except:
                                     pass
-                        else:
-                            break
+                    else:
+                        break
                 
                 # Check for completion FIRST
                 if completion_marker.exists():
@@ -370,8 +373,8 @@ Write to it: PHASE_COMPLETE"""
             phase.error = f"Execution error: {str(e)}"
             
         finally:
-            # Close log file if verbose
-            if self.verbose and 'log_handle' in locals():
+            # Always close log file if it was opened
+            if 'log_handle' in locals():
                 log_handle.close()
                 
             phase.end_time = datetime.now()
