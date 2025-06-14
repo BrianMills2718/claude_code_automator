@@ -28,6 +28,9 @@ class PhasePromptGenerator:
                        previous_phase_output: Optional[str] = None) -> str:
         """Generate a detailed prompt for a specific phase"""
         
+        # Create phase-specific CLAUDE.md if needed
+        self._create_phase_claude_md(phase_type, milestone)
+        
         # Get base prompt
         prompt = self._get_base_prompt(phase_type, milestone)
         
@@ -87,6 +90,11 @@ class PhasePromptGenerator:
         
         prompts = {
             "research": f"""Research requirements for: {milestone.name}
+
+Use subagents to explore the codebase:
+- "Check if any functionality for {milestone.name} already exists"
+- "Find similar patterns or implementations we can learn from"
+- "Identify potential integration points with existing code"
 
 Create file: .cc_automator/milestones/milestone_{milestone.number}/research.md
 
@@ -150,6 +158,12 @@ python main.py
 
 The program must run without errors and demonstrate all required functionality.
 
+### Subagent Verification:
+After implementing the core functionality, use a subagent to verify:
+- "Check that all functions from the plan have been implemented correctly"
+- "Verify that error handling matches the plan specifications"
+- "Confirm that the implementation follows the project's coding patterns"
+
 ### Output Required:
 Save a summary of what you implemented to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
 Include:
@@ -179,6 +193,12 @@ Evidence: Show final mypy output with "Success: no issues found".""",
 ## Unit Test Phase
 
 Create and run unit tests for Milestone {milestone.number}.
+
+### Subagent Research:
+Before writing tests, use a subagent to:
+- "Search for existing test patterns in the tests/ directory"
+- "Find examples of how similar functions are tested in this codebase"
+- "Identify the test naming conventions and structure used"
 
 ### Tasks:
 1. Check if tests/unit directory has test files
@@ -362,6 +382,65 @@ Follow these patterns for robust code:
 """
         
         return prompt + reminder
+        
+    def _create_phase_claude_md(self, phase_type: str, milestone: Milestone) -> None:
+        """Create a phase-specific CLAUDE.md file with targeted instructions"""
+        
+        # Create milestone directory
+        milestone_path = self.milestone_dir / f"milestone_{milestone.number}"
+        milestone_path.mkdir(parents=True, exist_ok=True)
+        
+        # Phase-specific CLAUDE.md content
+        phase_instructions = {
+            "research": f"""# Research Phase Instructions
+- Focus on understanding what needs to be built for {milestone.name}
+- Check if any functionality already exists
+- Identify potential challenges early
+- Keep findings concise and actionable
+""",
+            "planning": f"""# Planning Phase Instructions  
+- Create a detailed but not overly verbose plan
+- Focus on WHAT to build, not HOW to code it
+- Keep the plan under 300 lines for simple features
+- Include clear success criteria
+""",
+            "implement": f"""# Implementation Phase Instructions
+- Follow the plan exactly - don't add extra features
+- Only implement what's needed for Milestone {milestone.number}
+- Use subagents to verify your work
+- Keep code simple and readable
+""",
+            "test": f"""# Test Phase Instructions
+- Use subagents to find existing test patterns
+- Follow the project's test conventions
+- Test edge cases and error conditions
+- Keep tests focused and fast
+""",
+            "lint": """# Lint Phase Instructions
+- Only fix F-errors (syntax, undefined names)
+- Don't fix style issues unless they're F-errors
+- Run flake8 with --select=F flag
+""",
+            "typecheck": """# Type Check Phase Instructions
+- Add all missing type hints
+- Use Union types where appropriate
+- Run mypy with --strict flag
+- Fix all type errors
+"""
+        }
+        
+        if phase_type in phase_instructions:
+            phase_claude_md = milestone_path / f"{phase_type}_CLAUDE.md"
+            content = phase_instructions[phase_type]
+            
+            # Add milestone-specific context
+            if phase_type in ["implement", "test"]:
+                content += f"\n## Milestone {milestone.number} Success Criteria:\n"
+                for criterion in milestone.success_criteria:
+                    content += f"- {criterion}\n"
+            
+            with open(phase_claude_md, 'w') as f:
+                f.write(content)
         
     def create_phase_specific_claude_md(self, phase_type: str, milestone: Milestone,
                                        phase_name: str) -> Path:
