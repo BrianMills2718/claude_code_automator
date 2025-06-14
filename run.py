@@ -18,16 +18,44 @@ from progress_tracker import ProgressTracker
 from milestone_decomposer import MilestoneDecomposer
 from phase_prompt_generator import PhasePromptGenerator
 
+# Phase 4 imports
+try:
+    from parallel_executor import ParallelExecutor
+    PARALLEL_AVAILABLE = True
+except ImportError:
+    PARALLEL_AVAILABLE = False
+
+try:
+    from docker_executor import DockerExecutor
+    DOCKER_AVAILABLE = True
+except ImportError:
+    DOCKER_AVAILABLE = False
+
+try:
+    from visual_progress import VisualProgressDisplay
+    VISUAL_AVAILABLE = True
+except ImportError:
+    VISUAL_AVAILABLE = False
+
 
 class CCAutomatorRunner:
     """Main runner for autonomous code generation"""
     
-    def __init__(self, project_dir: Optional[Path] = None, resume: bool = False):
+    def __init__(self, project_dir: Optional[Path] = None, resume: bool = False,
+                 use_parallel: bool = True, use_docker: bool = False, use_visual: bool = True,
+                 specific_milestone: Optional[int] = None):
         self.project_dir = Path(project_dir) if project_dir else Path.cwd()
         self.resume = resume
+        self.use_parallel = use_parallel and PARALLEL_AVAILABLE
+        self.use_docker = use_docker and DOCKER_AVAILABLE
+        self.use_visual = use_visual and VISUAL_AVAILABLE
+        self.specific_milestone = specific_milestone
         
         # Initialize components
         self.orchestrator = None
+        self.parallel_executor = None
+        self.docker_executor = None
+        self.visual_progress = None
         self.session_manager = SessionManager(self.project_dir)
         self.progress_tracker = None
         self.decomposer = MilestoneDecomposer(self.project_dir)
@@ -57,6 +85,23 @@ class CCAutomatorRunner:
         # Step 3: Initialize or resume progress
         if not self._initialize_progress():
             return 1
+            
+        # Step 3.5: Initialize Phase 4 components
+        if self.use_parallel:
+            self.parallel_executor = ParallelExecutor(self.project_dir)
+            print("✓ Parallel execution enabled")
+            
+        if self.use_docker:
+            self.docker_executor = DockerExecutor(self.project_dir)
+            if self.docker_executor.check_docker_available():
+                print("✓ Docker execution enabled")
+            else:
+                print("⚠️  Docker not available, disabling Docker execution")
+                self.use_docker = False
+                
+        if self.use_visual:
+            self.visual_progress = VisualProgressDisplay()
+            print("✓ Visual progress display enabled")
             
         # Step 4: Execute milestones
         success = self._execute_milestones()
@@ -153,6 +198,108 @@ class CCAutomatorRunner:
             print("✓ Starting fresh execution")
             
         return True
+    
+    def _execute_milestone_phases_parallel(self, milestone, phases: List[Dict]) -> bool:
+        """Execute milestone phases with parallelization where possible"""
+        
+        milestone_name = f"Milestone {milestone.number}"
+        previous_output = None
+        p_idx = 0
+        
+        while p_idx < len(phases):
+            # Look ahead to find parallelizable phases
+            parallel_group = []
+            
+            # Collect phases that can run in parallel
+            phase_types = []
+            for i in range(p_idx, min(p_idx + 4, len(phases))):  # Look ahead up to 4 phases
+                phase_types.append(phases[i]["type"])
+            
+            # Check if we have a parallel group
+            if "lint" in phase_types and "typecheck" in phase_types:
+                # Lint and typecheck can run in parallel
+                for i in range(p_idx, len(phases)):
+                    if phases[i]["type"] in ["lint", "typecheck"]:
+                        parallel_group.append(phases[i])
+                    else:
+                        break
+            elif "test" in phase_types and "integration" in phase_types:
+                # Test and integration can run in parallel
+                for i in range(p_idx, len(phases)):
+                    if phases[i]["type"] in ["test", "integration"]:
+                        parallel_group.append(phases[i])
+                    else:
+                        break
+            
+            # Execute parallel group if found
+            if len(parallel_group) > 1:
+                print(f"\n🚀 Executing {len(parallel_group)} phases in parallel: {[p['type'] for p in parallel_group]}")
+                
+                # Create phase objects
+                phase_objects = []
+                for phase_info in parallel_group:
+                    prompt = self.prompt_generator.generate_prompt(
+                        phase_info["type"], milestone, previous_output
+                    )
+                    phase = create_phase(
+                        name=phase_info["type"],
+                        description=phase_info["description"],
+                        prompt=prompt
+                    )
+                    phase_objects.append(phase)
+                
+                # Execute in parallel
+                results = self.parallel_executor.execute_parallel_group(phase_objects, self.orchestrator)
+                
+                # Check all results
+                all_success = all(r.get("status") == "completed" for r in results)
+                if not all_success:
+                    return False
+                
+                # Update progress for all parallel phases
+                for phase, result in zip(phase_objects, results):
+                    self.progress_tracker.update_phase(
+                        milestone_name, f"milestone_{milestone.number}_{phase.name}", "completed",
+                        cost=phase.cost_usd
+                    )
+                
+                p_idx += len(parallel_group)
+            else:
+                # Execute single phase sequentially
+                phase_info = phases[p_idx]
+                phase_name = phase_info["name"]
+                phase_type = phase_info["type"]
+                
+                print(f"\n[{p_idx + 1}/{len(phases)}] {phase_type.upper()} Phase")
+                
+                # Execute as normal
+                prompt = self.prompt_generator.generate_prompt(
+                    phase_type, milestone, previous_output
+                )
+                phase = create_phase(
+                    name=phase_type,
+                    description=phase_info["description"],
+                    prompt=prompt
+                )
+                
+                result = self.orchestrator.execute_phase(phase)
+                
+                if phase.status.value != "completed":
+                    return False
+                
+                # Update progress
+                self.progress_tracker.update_phase(
+                    milestone_name, phase_name, "completed",
+                    cost=phase.cost_usd
+                )
+                
+                # Capture output for next phase
+                if phase_type in ["research", "planning"]:
+                    previous_output = phase.evidence or "Phase completed"
+                
+                p_idx += 1
+        
+        return True
         
     def _execute_milestones(self) -> bool:
         """Execute all milestones"""
@@ -162,8 +309,22 @@ class CCAutomatorRunner:
         total_start_time = datetime.now()
         all_success = True
         
+        # Filter milestones if specific one requested
+        milestones_to_run = self.milestones
+        if self.specific_milestone:
+            milestones_to_run = [m for m in self.milestones if m.number == self.specific_milestone]
+            if not milestones_to_run:
+                print(f"\n✗ Milestone {self.specific_milestone} not found")
+                return False
+            print(f"\nRunning only Milestone {self.specific_milestone}")
+        
         for m_idx in range(self.current_milestone_idx, len(self.milestones)):
             milestone = self.milestones[m_idx]
+            
+            # Skip if running specific milestone and this isn't it
+            if self.specific_milestone and milestone.number != self.specific_milestone:
+                continue
+                
             milestone_name = f"Milestone {milestone.number}"
             
             print(f"\n{'#' * 60}")
@@ -203,12 +364,21 @@ class CCAutomatorRunner:
         milestone_name = f"Milestone {milestone.number}"
         previous_output = None
         
+        # Check if we can use parallelization
+        if self.use_parallel and self.parallel_executor:
+            return self._execute_milestone_phases_parallel(milestone, phases)
+        
+        # Original sequential execution
         for p_idx in range(self.current_phase_idx, len(phases)):
             phase_info = phases[p_idx]
             phase_name = phase_info["name"]
             phase_type = phase_info["type"]
             
-            print(f"\n[{p_idx + 1}/{len(phases)}] {phase_type.upper()} Phase")
+            # Visual progress update
+            if self.visual_progress:
+                self.visual_progress.start_phase(phase_name, phase_type, p_idx + 1, len(phases))
+            else:
+                print(f"\n[{p_idx + 1}/{len(phases)}] {phase_type.upper()} Phase")
             
             # Update progress
             self.progress_tracker.update_phase(milestone_name, phase_name, "running")
@@ -225,12 +395,17 @@ class CCAutomatorRunner:
                 prompt=prompt
             )
             
-            # Execute phase
-            result = self.orchestrator.execute_phase(phase)
+            # Execute phase (with Docker if enabled)
+            if self.use_docker and self.docker_executor and phase_type in ["lint", "typecheck", "test"]:
+                result = self.docker_executor.execute_phase_in_docker(phase)
+            else:
+                result = self.orchestrator.execute_phase(phase)
             
             # Check result
             if phase.status.value != "completed":
                 self.progress_tracker.update_phase(milestone_name, phase_name, "failed")
+                if self.visual_progress:
+                    self.visual_progress.update_phase(phase_name, "failed", error=phase.error)
                 return False
                 
             # Update progress
@@ -238,6 +413,10 @@ class CCAutomatorRunner:
                 milestone_name, phase_name, "completed",
                 cost=phase.cost_usd
             )
+            
+            if self.visual_progress:
+                self.visual_progress.update_phase(phase_name, "completed", cost=phase.cost_usd,
+                                                session_id=phase.session_id)
             
             # Save session
             if phase.session_id:
@@ -313,6 +492,18 @@ def main():
     parser.add_argument("--resume", action="store_true", help="Resume from last checkpoint")
     parser.add_argument("--milestone", type=int, help="Run specific milestone only")
     
+    # Phase 4 features
+    parser.add_argument("--parallel", action="store_true", default=True,
+                       help="Enable parallel execution (default: enabled)")
+    parser.add_argument("--no-parallel", action="store_true", 
+                       help="Disable parallel execution")
+    parser.add_argument("--docker", action="store_true",
+                       help="Run mechanical phases in Docker containers")
+    parser.add_argument("--visual", action="store_true", default=True,
+                       help="Enable visual progress display (default: enabled)")
+    parser.add_argument("--no-visual", action="store_true",
+                       help="Disable visual progress display")
+    
     args = parser.parse_args()
     
     # Determine project directory
@@ -322,8 +513,19 @@ def main():
         print(f"Error: Project directory not found: {project_dir}")
         return 1
         
+    # Determine feature flags
+    use_parallel = not args.no_parallel
+    use_visual = not args.no_visual
+        
     # Run automation
-    runner = CCAutomatorRunner(project_dir, resume=args.resume)
+    runner = CCAutomatorRunner(
+        project_dir, 
+        resume=args.resume,
+        use_parallel=use_parallel,
+        use_docker=args.docker,
+        use_visual=use_visual,
+        specific_milestone=args.milestone
+    )
     
     try:
         return runner.run()
