@@ -19,6 +19,7 @@ from milestone_decomposer import MilestoneDecomposer
 from phase_prompt_generator import PhasePromptGenerator
 from output_filter import OutputFilter
 from file_parallel_executor import FileParallelExecutor
+from parallel_assessment_agent import ParallelAssessmentAgent
 
 # Phase 4 imports
 try:
@@ -67,6 +68,7 @@ class CCAutomatorRunner:
         self.prompt_generator = PhasePromptGenerator(self.project_dir)
         self.output_filter = OutputFilter(verbose=verbose)
         self.file_parallel_executor = FileParallelExecutor(self.project_dir)
+        self.assessment_agent = ParallelAssessmentAgent(self.project_dir, verbose=verbose)
         
         # Execution state
         self.milestones = []
@@ -213,6 +215,10 @@ class CCAutomatorRunner:
         previous_output = None
         p_idx = 0
         
+        # Set current milestone on orchestrator
+        if self.orchestrator:
+            self.orchestrator.current_milestone = milestone.number
+        
         while p_idx < len(phases):
             # Look ahead to find parallelizable phases
             parallel_group = []
@@ -279,15 +285,32 @@ class CCAutomatorRunner:
                 
                 print(f"\n[{p_idx + 1}/{len(phases)}] {phase_type.upper()} Phase")
                 
+                # Check for retry context from assessment
+                retry_context = self.assessment_agent.get_retry_context(phase_type)
+                
                 # Execute as normal
                 prompt = self.prompt_generator.generate_prompt(
                     phase_type, milestone, previous_output
                 )
+                
+                # Add retry context if available
+                if retry_context:
+                    prompt = retry_context + "\n\n" + prompt
+                
                 phase = create_phase(
                     name=phase_type,
                     description=phase_info["description"],
                     prompt=prompt
                 )
+                
+                # Start assessment monitoring for complex phases
+                if phase_type in ["test", "integration", "implement", "planning"]:
+                    self.assessment_agent.start_monitoring(
+                        phase_name=phase_type,
+                        phase_type=phase_type,
+                        check_interval=60,
+                        start_after=90
+                    )
                 
                 # Execute with appropriate strategy
                 if self.use_file_parallel and phase_type in ["lint", "typecheck"]:
@@ -415,6 +438,10 @@ class CCAutomatorRunner:
         milestone_name = f"Milestone {milestone.number}"
         previous_output = None
         
+        # Set current milestone on orchestrator
+        if self.orchestrator:
+            self.orchestrator.current_milestone = milestone.number
+        
         # Check if we can use parallelization
         if self.use_parallel and self.parallel_executor:
             return self._execute_milestone_phases_parallel(milestone, phases)
@@ -434,10 +461,17 @@ class CCAutomatorRunner:
             # Update progress
             self.progress_tracker.update_phase(milestone_name, phase_name, "running")
             
+            # Check for retry context from assessment
+            retry_context = self.assessment_agent.get_retry_context(phase_type)
+            
             # Generate prompt
             prompt = self.prompt_generator.generate_prompt(
                 phase_type, milestone, previous_output
             )
+            
+            # Add retry context if available
+            if retry_context:
+                prompt = retry_context + "\n\n" + prompt
             
             # Create phase
             phase = create_phase(
@@ -445,6 +479,15 @@ class CCAutomatorRunner:
                 description=phase_info["description"],
                 prompt=prompt
             )
+            
+            # Start assessment monitoring for complex phases
+            if phase_type in ["test", "integration", "implement", "planning"]:
+                self.assessment_agent.start_monitoring(
+                    phase_name=phase_type,
+                    phase_type=phase_type,
+                    check_interval=60,
+                    start_after=90
+                )
             
             # Execute phase with appropriate strategy
             if self.use_file_parallel and phase_type in ["lint", "typecheck"]:

@@ -93,6 +93,7 @@ class PhaseOrchestrator:
         self.session_manager = {}  # phase_name -> session_id
         self.checkpoints_dir = self.working_dir / ".cc_automator" / "checkpoints"
         self.evidence_dir = self.working_dir / ".cc_automator" / "evidence"
+        self.current_milestone = None  # Will be set by runner
         
         # Create directories
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -185,6 +186,7 @@ class PhaseOrchestrator:
         finally:
             phase.end_time = datetime.now()
             self._save_checkpoint(phase)
+            self._save_milestone_evidence(phase)
             self._print_phase_summary(phase)
             
         return self._phase_to_dict(phase)
@@ -335,6 +337,7 @@ Write to it: PHASE_COMPLETE"""
         finally:
             phase.end_time = datetime.now()
             self._save_checkpoint(phase)
+            self._save_milestone_evidence(phase)
             self._print_phase_summary(phase)
             
         return self._phase_to_dict(phase)
@@ -401,6 +404,56 @@ Write to it: PHASE_COMPLETE"""
         
         with open(checkpoint_file, 'w') as f:
             json.dump(checkpoint_data, f, indent=2, default=str)
+            
+    def _save_milestone_evidence(self, phase: Phase):
+        """Save phase output to milestone directory for next phases"""
+        if not self.current_milestone or phase.status != PhaseStatus.COMPLETED:
+            return
+            
+        # Only save evidence for key phases
+        if phase.name not in ["research", "planning", "implement"]:
+            return
+            
+        milestone_dir = self.working_dir / ".cc_automator" / "milestones" / f"milestone_{self.current_milestone}"
+        milestone_dir.mkdir(parents=True, exist_ok=True)
+        
+        evidence_file = milestone_dir / f"{phase.name}.md"
+        
+        # Get the actual output
+        output_content = ""
+        
+        # Check phase outputs directory
+        phase_output_file = self.working_dir / ".cc_automator" / "phase_outputs" / f"milestone_{self.current_milestone}_{phase.name}.md"
+        if phase_output_file.exists():
+            output_content = phase_output_file.read_text()
+        elif phase.evidence:
+            output_content = phase.evidence
+            
+        # For implement phase, also capture what was built
+        if phase.name == "implement" and not output_content:
+            files_created = []
+            
+            # Check main.py
+            main_py = self.working_dir / "main.py"
+            if main_py.exists():
+                files_created.append(f"## main.py\n```python\n{main_py.read_text()}\n```\n")
+                
+            # Check src directory
+            src_dir = self.working_dir / "src"
+            if src_dir.exists():
+                for py_file in src_dir.glob("**/*.py"):
+                    rel_path = py_file.relative_to(self.working_dir)
+                    files_created.append(f"## {rel_path}\n```python\n{py_file.read_text()}\n```\n")
+                    
+            if files_created:
+                output_content = "# Implementation Output\n\n" + "\n".join(files_created)
+                
+        # Save the evidence
+        if output_content:
+            with open(evidence_file, 'w') as f:
+                f.write(output_content)
+            if self.verbose:
+                print(f"  Saved evidence to: {evidence_file}")
             
     def _phase_to_dict(self, phase: Phase) -> Dict[str, Any]:
         """Convert phase to dictionary"""
