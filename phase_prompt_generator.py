@@ -149,6 +149,13 @@ python main.py
 ```
 
 The program must run without errors and demonstrate all required functionality.
+
+### Output Required:
+Save a summary of what you implemented to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
+Include:
+- List of files created/modified
+- Key functions/classes implemented
+- How to run and test the implementation
 """,
 
             "lint": """Run flake8 and fix F errors only:

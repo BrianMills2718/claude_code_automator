@@ -34,7 +34,7 @@ class Phase:
     prompt: str
     allowed_tools: List[str] = field(default_factory=lambda: ["Read", "Write", "Edit", "MultiEdit", "Bash"])
     think_mode: Optional[str] = None
-    max_turns: int = 30  # Increased for async completion
+    max_turns: int = 50  # Increased for async completion
     timeout_seconds: int = 600  # 10 minutes default
     
     # Execution results
@@ -530,38 +530,49 @@ Write to it: PHASE_COMPLETE"""
 
 
 # Default phase configurations based on specification
+# Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash"], "think harder"),
-    ("planning",     "Create detailed implementation plan", ["Read", "Write"], "think hard"),
-    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], "think"),
-    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None),
-    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None),
-    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], "think"),
-    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], "think"),
-    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], "think hard"),
-    ("commit",       "Create git commit with changes", ["Bash", "Read"], None)
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash"], "think harder", None),
+    ("planning",     "Create detailed implementation plan", ["Read", "Write"], "think hard", None),
+    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], "think", 60),  # Give more turns for complex implementations
+    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
+    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 20),
+    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], "think", 40),
+    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], "think", 40),
+    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], "think hard", None),
+    ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 10)
 ]
 
 
 def create_phase(name: str, description: str, prompt: str, 
                  allowed_tools: Optional[List[str]] = None, 
-                 think_mode: Optional[str] = None) -> Phase:
+                 think_mode: Optional[str] = None,
+                 max_turns: Optional[int] = None) -> Phase:
     """Helper to create a phase with defaults from PHASE_CONFIGS"""
     
     # Find config for this phase
-    for config_name, config_desc, config_tools, config_think in PHASE_CONFIGS:
+    for config_name, config_desc, config_tools, config_think, config_max_turns in PHASE_CONFIGS:
         if config_name == name:
-            return Phase(
+            phase = Phase(
                 name=name,
                 description=description or config_desc,
                 prompt=prompt,
                 allowed_tools=allowed_tools or config_tools,
                 think_mode=think_mode or config_think
             )
+            # Use explicit max_turns if provided, otherwise use config, otherwise use default
+            if max_turns is not None:
+                phase.max_turns = max_turns
+            elif config_max_turns is not None:
+                phase.max_turns = config_max_turns
+            return phase
     
     # Default if not found
-    return Phase(name=name, description=description, prompt=prompt,
-                 allowed_tools=allowed_tools, think_mode=think_mode)
+    phase = Phase(name=name, description=description, prompt=prompt,
+                  allowed_tools=allowed_tools, think_mode=think_mode)
+    if max_turns is not None:
+        phase.max_turns = max_turns
+    return phase
 
 
 if __name__ == "__main__":
