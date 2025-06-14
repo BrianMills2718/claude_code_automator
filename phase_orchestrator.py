@@ -572,14 +572,14 @@ Write to it: PHASE_COMPLETE"""
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash"], "think harder", None),
-    ("planning",     "Create detailed implementation plan", ["Read", "Write"], "think hard", None),
-    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], "think", 60),  # Give more turns for complex implementations
-    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
-    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 20),
-    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], "think", 40),
-    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], "think", 40),
-    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], "think hard", None),
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash"], None, 10),  # Quick research
+    ("planning",     "Create detailed implementation plan", ["Read", "Write"], None, 10),  # Quick planning
+    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 30),  # Reasonable for implementation
+    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 10),
+    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 10),
+    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], None, 20),
+    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], None, 20),
+    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], None, 10),
     ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 10)
 ]
 
