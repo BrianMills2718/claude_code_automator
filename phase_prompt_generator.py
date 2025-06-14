@@ -120,7 +120,9 @@ Create a detailed plan including:
 - Test case specifications
 - Step-by-step implementation order
 
-Save your plan to: .cc_automator/milestones/milestone_{milestone.number}/plan.md
+Save your COMPLETE plan to: .cc_automator/milestones/milestone_{milestone.number}/plan.md
+
+This plan will be used by the implementation phase, so make it comprehensive and clear.
 """,
 
             "implement": f"""
@@ -273,7 +275,7 @@ Show the git commit hash and message.
         }
         
         if phase_type in context_intros:
-            prompt = f"{context_intros[phase_type]}\n{previous_output[:500]}...\n\n{prompt}"
+            prompt = f"{context_intros[phase_type]}\n\n{previous_output}\n\n{prompt}"
             
         return prompt
         

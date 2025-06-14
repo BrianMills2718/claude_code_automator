@@ -295,7 +295,14 @@ class CCAutomatorRunner:
                 
                 # Capture output for next phase
                 if phase_type in ["research", "planning"]:
-                    previous_output = phase.evidence or "Phase completed"
+                    # Try to read the output file
+                    output_file = (self.project_dir / ".cc_automator" / "milestones" / 
+                                 f"milestone_{milestone.number}" / f"{phase_type}.md")
+                    if output_file.exists():
+                        with open(output_file) as f:
+                            previous_output = f.read()  # Read entire file
+                    else:
+                        previous_output = phase.evidence or ""
                 
                 p_idx += 1
         
@@ -429,7 +436,7 @@ class CCAutomatorRunner:
                              f"milestone_{milestone.number}" / f"{phase_type}.md")
                 if output_file.exists():
                     with open(output_file) as f:
-                        previous_output = f.read()[:1000]  # First 1000 chars
+                        previous_output = f.read()  # Read entire file, no limit
                         
             # Display progress
             self.progress_tracker.display_progress()
