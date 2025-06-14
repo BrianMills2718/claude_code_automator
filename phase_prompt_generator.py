@@ -91,46 +91,33 @@ class PhasePromptGenerator:
         prompts = {
             "research": f"""Research requirements for: {milestone.name}
 
-Use subagents to explore the codebase:
-- "Check if any functionality for {milestone.name} already exists"
-- "Find similar patterns or implementations we can learn from"
-- "Identify potential integration points with existing code"
+Quickly check if functionality exists:
+1. Look for existing implementation
+2. If already complete, document that fact
+3. If not, identify what needs to be built
 
 Create file: .cc_automator/milestones/milestone_{milestone.number}/research.md
 
-Include:
-- What components to build
-- Design approach
-- Potential challenges
-- Implementation strategy
-
-Keep it concise but thorough.""",
+Keep it brief - this should take < 30 seconds.""",
 
             "planning": f"""
 {milestone_context}
 
 ## Planning Phase
 
-Based on the research findings, create a detailed implementation plan.
+Based on research, create implementation plan.
 
-### Tasks:
-1. Define the exact file structure to create/modify
-2. Specify all functions/classes with signatures
-3. Detail the data flow and interactions
-4. List all test cases to implement
-5. Create implementation steps in order
+If research shows functionality is already complete:
+1. Document that in plan.md
+2. List any minor fixes needed (lint, types)
+3. Exit early - no need for detailed planning
 
-### Output Required:
-Create a detailed plan including:
-- File structure with purpose of each file
-- Function/class specifications with type hints
-- Pseudocode for complex logic
-- Test case specifications
-- Step-by-step implementation order
+Otherwise, create brief plan with:
+- Files to create/modify
+- Key functions needed
+- Basic test approach
 
-Save your COMPLETE plan to: .cc_automator/milestones/milestone_{milestone.number}/plan.md
-
-This plan will be used by the implementation phase, so make it comprehensive and clear.
+Save to: .cc_automator/milestones/milestone_{milestone.number}/plan.md
 """,
 
             "implement": f"""
@@ -138,38 +125,19 @@ This plan will be used by the implementation phase, so make it comprehensive and
 
 ## Implementation Phase
 
-Implement the functionality according to the plan for Milestone {milestone.number}.
+Implement based on the plan.
 
-### Requirements:
-1. Follow the implementation plan exactly
-2. Ensure main.py demonstrates this milestone's features
-3. Use type hints for all functions
-4. Add docstrings to all functions/classes
-5. Follow the self-healing patterns from CLAUDE.md
+If plan says functionality is already complete:
+1. Verify with: python main.py
+2. Document in implement.md that it's already done
+3. Exit early
 
-### Key Features to Implement:
-{chr(10).join(f"- {criterion}" for criterion in milestone.success_criteria)}
+Otherwise:
+1. Implement required functionality
+2. Ensure main.py works
+3. Use type hints
 
-### Verification:
-After implementation, run:
-```bash
-python main.py
-```
-
-The program must run without errors and demonstrate all required functionality.
-
-### Subagent Verification:
-After implementing the core functionality, use a subagent to verify:
-- "Check that all functions from the plan have been implemented correctly"
-- "Verify that error handling matches the plan specifications"
-- "Confirm that the implementation follows the project's coding patterns"
-
-### Output Required:
-Save a summary of what you implemented to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
-Include:
-- List of files created/modified
-- Key functions/classes implemented
-- How to run and test the implementation
+Save summary to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
 """,
 
             "lint": """Run flake8 and fix F errors only:
@@ -194,11 +162,9 @@ Evidence: Show final mypy output with "Success: no issues found".""",
 
 Create and run unit tests for Milestone {milestone.number}.
 
-### Subagent Research:
-Before writing tests, use a subagent to:
-- "Search for existing test patterns in the tests/ directory"
-- "Find examples of how similar functions are tested in this codebase"
-- "Identify the test naming conventions and structure used"
+### Quick Check:
+1. Look at existing test structure if any
+2. Follow existing patterns
 
 ### Tasks:
 1. Check if tests/unit directory has test files
