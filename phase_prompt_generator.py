@@ -363,12 +363,15 @@ Follow these patterns for robust code:
 - Check if any functionality already exists
 - Identify potential challenges early
 - Keep findings concise and actionable
+- DO NOT use TodoWrite tool - just do the work directly
+- Create completion marker when done
 """,
             "planning": f"""# Planning Phase Instructions  
 - Create a detailed but not overly verbose plan
 - Focus on WHAT to build, not HOW to code it
 - Keep the plan under 300 lines for simple features
 - Include clear success criteria
+- DO NOT use TodoWrite tool - just do the work directly
 """,
             "implement": f"""# Implementation Phase Instructions
 - Follow the plan exactly - don't add extra features
@@ -386,6 +389,7 @@ Follow these patterns for robust code:
 - Only fix F-errors (syntax, undefined names)
 - Don't fix style issues unless they're F-errors
 - Run flake8 with --select=F flag
+- DO NOT use TodoWrite tool - just fix the errors
 """,
             "typecheck": """# Type Check Phase Instructions
 - Add all missing type hints

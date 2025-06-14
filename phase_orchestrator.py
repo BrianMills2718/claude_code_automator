@@ -572,7 +572,7 @@ Write to it: PHASE_COMPLETE"""
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash"], None, 10),  # Quick research
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write"], None, 15),  # Need Write tool and more turns
     ("planning",     "Create detailed implementation plan", ["Read", "Write"], None, 10),  # Quick planning
     ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 30),  # Reasonable for implementation
     ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 10),
