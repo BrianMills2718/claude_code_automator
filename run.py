@@ -11,13 +11,14 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 
-from phase_orchestrator import PhaseOrchestrator, create_phase, Phase
+from phase_orchestrator import PhaseOrchestrator, create_phase, Phase, PhaseStatus
 from session_manager import SessionManager
 from preflight_validator import PreflightValidator
 from progress_tracker import ProgressTracker
 from milestone_decomposer import MilestoneDecomposer
 from phase_prompt_generator import PhasePromptGenerator
 from output_filter import OutputFilter
+from file_parallel_executor import FileParallelExecutor
 
 # Phase 4 imports
 try:
@@ -44,7 +45,8 @@ class CCAutomatorRunner:
     
     def __init__(self, project_dir: Optional[Path] = None, resume: bool = False,
                  use_parallel: bool = True, use_docker: bool = False, use_visual: bool = True,
-                 specific_milestone: Optional[int] = None, verbose: bool = False):
+                 specific_milestone: Optional[int] = None, verbose: bool = False,
+                 use_file_parallel: bool = True):
         self.project_dir = Path(project_dir) if project_dir else Path.cwd()
         self.resume = resume
         self.use_parallel = use_parallel and PARALLEL_AVAILABLE
@@ -52,6 +54,7 @@ class CCAutomatorRunner:
         self.use_visual = use_visual and VISUAL_AVAILABLE
         self.specific_milestone = specific_milestone
         self.verbose = verbose
+        self.use_file_parallel = use_file_parallel
         
         # Initialize components
         self.orchestrator = None
@@ -63,6 +66,7 @@ class CCAutomatorRunner:
         self.decomposer = MilestoneDecomposer(self.project_dir)
         self.prompt_generator = PhasePromptGenerator(self.project_dir)
         self.output_filter = OutputFilter(verbose=verbose)
+        self.file_parallel_executor = FileParallelExecutor(self.project_dir)
         
         # Execution state
         self.milestones = []
@@ -285,7 +289,24 @@ class CCAutomatorRunner:
                     prompt=prompt
                 )
                 
-                result = self.orchestrator.execute_phase(phase)
+                # Execute with appropriate strategy
+                if self.use_file_parallel and phase_type in ["lint", "typecheck"]:
+                    # Use file-level parallelization for mechanical fixes
+                    if phase_type == "lint":
+                        success, file_results = self.file_parallel_executor.execute_parallel_lint(self.orchestrator)
+                        phase.status = PhaseStatus.COMPLETED if success else PhaseStatus.FAILED
+                        phase.cost_usd = sum(r.get("cost", 0) for r in file_results)
+                        phase.duration_ms = sum(r.get("duration", 0) for r in file_results)
+                    else:  # typecheck
+                        success, file_results = self.file_parallel_executor.execute_parallel_typecheck(self.orchestrator)
+                        phase.status = PhaseStatus.COMPLETED if success else PhaseStatus.FAILED
+                        phase.cost_usd = sum(r.get("cost", 0) for r in file_results)
+                        phase.duration_ms = sum(r.get("duration", 0) for r in file_results)
+                        
+                    if not success:
+                        phase.error = "Some files failed to fix"
+                else:
+                    result = self.orchestrator.execute_phase(phase)
                 
                 if phase.status.value != "completed":
                     return False
@@ -425,8 +446,24 @@ class CCAutomatorRunner:
                 prompt=prompt
             )
             
-            # Execute phase (with Docker if enabled)
-            if self.use_docker and self.docker_executor and phase_type in ["lint", "typecheck", "test"]:
+            # Execute phase with appropriate strategy
+            if self.use_file_parallel and phase_type in ["lint", "typecheck"]:
+                # Use file-level parallelization for mechanical fixes
+                if phase_type == "lint":
+                    success, file_results = self.file_parallel_executor.execute_parallel_lint(self.orchestrator)
+                    phase.status = PhaseStatus.COMPLETED if success else PhaseStatus.FAILED
+                    phase.cost_usd = sum(r.get("cost", 0) for r in file_results)
+                    phase.duration_ms = sum(r.get("duration", 0) for r in file_results)
+                else:  # typecheck
+                    success, file_results = self.file_parallel_executor.execute_parallel_typecheck(self.orchestrator)
+                    phase.status = PhaseStatus.COMPLETED if success else PhaseStatus.FAILED
+                    phase.cost_usd = sum(r.get("cost", 0) for r in file_results)
+                    phase.duration_ms = sum(r.get("duration", 0) for r in file_results)
+                    
+                if not success:
+                    phase.error = "Some files failed to fix"
+                    
+            elif self.use_docker and self.docker_executor and phase_type in ["lint", "typecheck", "test"]:
                 result = self.docker_executor.execute_phase_in_docker(phase)
             else:
                 result = self.orchestrator.execute_phase(phase)
@@ -553,6 +590,10 @@ def main():
                        help="Disable visual progress display")
     parser.add_argument("--verbose", action="store_true",
                        help="Show verbose output including all phase details")
+    parser.add_argument("--file-parallel", action="store_true", default=True,
+                       help="Enable file-level parallelization for lint/typecheck (default: enabled)")
+    parser.add_argument("--no-file-parallel", action="store_true",
+                       help="Disable file-level parallelization")
     
     args = parser.parse_args()
     
@@ -566,6 +607,7 @@ def main():
     # Determine feature flags
     use_parallel = not args.no_parallel
     use_visual = not args.no_visual
+    use_file_parallel = not args.no_file_parallel
         
     # Run automation
     runner = CCAutomatorRunner(
@@ -575,7 +617,8 @@ def main():
         use_docker=args.docker,
         use_visual=use_visual,
         specific_milestone=args.milestone,
-        verbose=args.verbose
+        verbose=args.verbose,
+        use_file_parallel=use_file_parallel
     )
     
     try:
