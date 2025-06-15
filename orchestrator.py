@@ -368,9 +368,15 @@ class CCAutomatorOrchestrator:
     
     def _execute_milestone_phases_parallel(self, milestone, phases: List[Dict]) -> bool:
         """Execute milestone phases with parallelization where possible"""
-        # Similar to original but factored out
-        # (Implementation details omitted for brevity - same as original)
-        pass
+        # For now, just fall back to sequential execution
+        # TODO: Implement actual parallel execution logic
+        print("Note: Parallel execution not fully implemented yet, using sequential execution")
+        
+        # Call the sequential execution without the parallel check
+        self.use_parallel = False  # Temporarily disable to avoid recursion
+        result = self._execute_milestone_phases(milestone, phases)
+        self.use_parallel = True  # Re-enable
+        return result
         
     def _capture_phase_output(self, phase_type: str, milestone, phase: Phase) -> Optional[str]:
         """Capture output from a phase for the next phase"""
