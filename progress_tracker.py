@@ -206,8 +206,11 @@ class ProgressTracker:
         """Get the point to resume from"""
         for milestone_name, milestone in self.milestones.items():
             if not milestone.is_complete:
+                # Extract milestone number from name like "Milestone 1"
+                milestone_number = int(milestone_name.split()[-1])
                 return {
-                    "milestone": milestone_name,
+                    "milestone": milestone_number,
+                    "milestone_name": milestone_name,
                     "completed_phases": milestone.completed_phases,
                     "next_phase_index": milestone.completed_phases
                 }
