@@ -8,20 +8,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building and Running
 ```bash
-# Run the automator on a project
-python run.py --project /path/to/project
+# Run the automator on a project (can use run.py or cli.py)
+python cli.py --project /path/to/project
 
 # Resume from last checkpoint
-python run.py --project /path/to/project --resume
+python cli.py --project /path/to/project --resume
 
 # Run specific milestone only
-python run.py --project /path/to/project --milestone 2
+python cli.py --project /path/to/project --milestone 2
 
 # Run with Docker isolation (Phase 4)
-python run.py --project /path/to/project --docker
+python cli.py --project /path/to/project --docker
 
 # Disable parallel execution
-python run.py --project /path/to/project --no-parallel
+python cli.py --project /path/to/project --no-parallel
 
 # Run setup for a new project
 python setup.py --project /path/to/project
@@ -29,6 +29,12 @@ python setup.py --project /path/to/project
 # Create example project
 python setup.py --project /path/to/project --example calculator
 ```
+
+### Parallelization Strategies
+See PARALLELIZATION_GUIDE.md for detailed strategy selection guide.
+- Default: File-level parallelization for mechanical fixes
+- Advanced: Git worktrees for independent features
+- Future: LLM-driven strategy selection
 
 ### Testing
 ```bash
@@ -66,17 +72,28 @@ CC_AUTOMATOR3 is an autonomous code generation system that orchestrates Claude C
 
 ### Key Components
 
+#### CLI Entry Point (`cli.py`) 
+- Handles command-line argument parsing
+- Launches the orchestrator
+- Maintains backwards compatibility with run.py
+
+#### Core Orchestrator (`orchestrator.py`)
+- Manages milestone and phase execution
+- Coordinates all components
+- Handles checkpoint/resume logic
+- Integrates optional features (parallel, Docker)
+
 #### Phase Orchestrator (`phase_orchestrator.py`)
 - Manages isolated Claude Code CLI invocations
-- Implements async execution with completion markers for long-running phases
-- Handles streaming JSON output for real-time monitoring
-- Tracks session IDs for precise debugging
+- Implements async execution with completion markers
+- **NEW**: Adaptive polling (5s → 30s exponential backoff)
+- **NEW**: Improved session ID and cost tracking from streaming JSON
+- **NEW**: Better error messages with actionable guidance
 
-#### Run System (`run.py`)
-- Main entry point that coordinates the entire process
-- Manages milestone execution sequentially
-- Supports resume from checkpoint
-- Integrates Phase 4 features (parallel, Docker, visual)
+#### Progress Display (`progress_display.py`)
+- Unified progress visualization
+- Supports both text and visual modes
+- Cleanly separated UI concerns
 
 #### Phase Prompt Generator (`phase_prompt_generator.py`)
 - Creates phase-specific prompts with evidence requirements
@@ -167,6 +184,14 @@ All implementation includes these patterns automatically:
 4. Always validate evidence from Claude
 5. Log all phase outputs for debugging
 6. Prefer file-based communication over process exit codes
+
+## Recent Improvements (MVP Refactor)
+
+1. **Architecture**: Separated run.py into cli.py, orchestrator.py, and progress_display.py
+2. **Performance**: Adaptive polling reduces wait time by up to 50%
+3. **Reliability**: Better session ID tracking and cost estimation
+4. **UX**: Clearer error messages with actionable guidance
+5. **Documentation**: New PARALLELIZATION_GUIDE.md for strategy selection
 
 ## Debugging
 

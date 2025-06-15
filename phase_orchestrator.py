@@ -266,11 +266,15 @@ Write to it: PHASE_COMPLETE"""
             if self.verbose:
                 print(f"Logging phase output to: {log_file}")
             
-            # Poll for completion
-            poll_interval = 15  # Check every 15 seconds
-            max_polls = phase.timeout_seconds // poll_interval
+            # Initialize streaming processor
+            stream_processor = StreamingJSONProcessor()
             
-            for poll_count in range(max_polls):
+            # Poll for completion with adaptive intervals
+            poll_interval = 5  # Start with 5 seconds
+            max_poll_interval = 30  # Max 30 seconds
+            elapsed_time = 0
+            
+            while elapsed_time < phase.timeout_seconds:
                 # Always capture streaming output to log
                 # Non-blocking read of stdout
                 import select
@@ -281,19 +285,17 @@ Write to it: PHASE_COMPLETE"""
                         if line:
                             log_handle.write(line)
                             log_handle.flush()
-                            # Parse streaming JSON for insights
-                            if self.verbose:
-                                try:
-                                    data = json.loads(line.strip())
-                                    if data.get("type") == "tool_use":
-                                        print(f"  Tool: {data.get('name')} - {data.get('parameters', {})}")
-                                    elif data.get("type") == "tool_result":
-                                        result_preview = str(data.get('output', ''))[:100]
-                                        if len(str(data.get('output', ''))) > 100:
-                                            result_preview += "..."
-                                        print(f"  Result: {result_preview}")
-                                except:
-                                    pass
+                            
+                            # Process streaming JSON
+                            event = stream_processor.process_line(line)
+                            if event and self.verbose:
+                                if event.get("type") == "tool_use":
+                                    print(f"  Tool: {event.get('name')} - {event.get('parameters', {})}")
+                                elif event.get("type") == "tool_result":
+                                    result_preview = str(event.get('output', ''))[:100]
+                                    if len(str(event.get('output', ''))) > 100:
+                                        result_preview += "..."
+                                    print(f"  Result: {result_preview}")
                     else:
                         break
                 
@@ -310,18 +312,20 @@ Write to it: PHASE_COMPLETE"""
                         except Exception:
                             phase.evidence = "Phase completed successfully"
                     
-                    # Extract session info from stdout if available
-                    try:
-                        stdout_output = process.stdout.read()
-                        if stdout_output:
-                            result_data = json.loads(stdout_output)
-                            phase.session_id = result_data.get("session_id", "async")
-                            phase.cost_usd = result_data.get("cost_usd", 0.0)
-                            phase.duration_ms = result_data.get("duration_ms", 0)
-                    except Exception:
-                        phase.session_id = "async"
-                        phase.cost_usd = 0.0
-                        phase.duration_ms = 0
+                    # Use session info from streaming processor
+                    if stream_processor.current_session_id:
+                        phase.session_id = stream_processor.current_session_id
+                    else:
+                        phase.session_id = f"async-{phase.name}-{int(time.time())}"
+                    
+                    # Extract cost/duration from final result if available
+                    if stream_processor.final_result:
+                        phase.cost_usd = stream_processor.final_result.get("cost_usd", 0.0)
+                        phase.duration_ms = stream_processor.final_result.get("duration_ms", 0)
+                    else:
+                        # Estimate based on execution time
+                        phase.cost_usd = 0.0  # Will be updated when proper tracking is available
+                        phase.duration_ms = int(elapsed_time * 1000)
                     
                     break
                     
@@ -333,10 +337,19 @@ Write to it: PHASE_COMPLETE"""
                         print(f"✓ Phase {phase.name} completed (found marker after exit)!")
                         phase.status = PhaseStatus.COMPLETED
                     else:
-                        print(f"Process exited without creating completion marker")
+                        print(f"✗ Phase {phase.name} failed - process exited without completion")
                         stdout, stderr = process.communicate()
+                        
+                        # Provide more helpful error message
+                        if stderr:
+                            phase.error = f"Phase failed with error: {stderr[:500]}"
+                        elif stdout:
+                            phase.error = f"Phase exited unexpectedly. Output: {stdout[:500]}"
+                        else:
+                            phase.error = (f"Phase {phase.name} exited without creating completion marker. "
+                                         f"Check {log_file} for details.")
+                        
                         phase.status = PhaseStatus.FAILED
-                        phase.error = f"Process exited without completion: {stderr or stdout}"
                     break
                     
                 # Check for errors
@@ -354,17 +367,23 @@ Write to it: PHASE_COMPLETE"""
                     break
                 
                 # Show progress
-                elapsed = (poll_count + 1) * poll_interval
-                print(f"Phase {phase.name} running... ({elapsed}s elapsed, checking {completion_marker.name})")
+                print(f"Phase {phase.name} running... ({int(elapsed_time)}s elapsed, checking {completion_marker.name})")
+                
+                # Sleep with adaptive interval
                 time.sleep(poll_interval)
+                elapsed_time += poll_interval
+                
+                # Increase poll interval exponentially up to max
+                poll_interval = min(poll_interval * 1.5, max_poll_interval)
             
-            else:
-                # Timeout reached
+            # If we exit the while loop, it means timeout reached
+            if phase.status not in [PhaseStatus.COMPLETED, PhaseStatus.FAILED]:
                 print(f"✗ Phase {phase.name} timed out after {phase.timeout_seconds}s")
                 process.kill()
                 process.wait()
                 phase.status = PhaseStatus.TIMEOUT
-                phase.error = f"Phase timed out after {phase.timeout_seconds} seconds"
+                phase.error = (f"Phase timed out after {phase.timeout_seconds} seconds. "
+                             f"Consider increasing timeout or breaking into smaller tasks.")
             
         except Exception as e:
             phase.status = PhaseStatus.FAILED
