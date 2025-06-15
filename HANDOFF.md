@@ -2,8 +2,9 @@
 
 ## Current State
 - **Status**: Functional but needs optimization
-- **Location**: `/home/brian/autocoder2_cc/cc_automator4`
+- **Location**: `/home/brian/autocoder2_cc/cc_automator4` (ready to move to `~/cc_automator4`)
 - **Key Issue**: Research/Planning phases take too long due to verbose prompts
+- **Documentation**: All references updated to cc_automator4
 
 ## What Works
 1. All core components are built and integrated
@@ -22,10 +23,15 @@
 ### 2. Testing
 Create fresh test directory:
 ```bash
+# Option 1: Use existing test_calculator_fresh
+cd ~/autocoder2_cc/test_calculator_fresh
+python ../cc_automator4/run.py --milestone 1
+
+# Option 2: After moving to home directory
 cd ~/cc_automator4
-mkdir test_projects && cd test_projects
-mkdir calculator_fresh && cd calculator_fresh
-cp ~/test_calculator/CLAUDE.md .
+mkdir -p test_projects/calculator_fresh
+cd test_projects/calculator_fresh
+cp ~/autocoder2_cc/test_calculator/CLAUDE.md .
 git init
 python ../../run.py --milestone 1
 ```

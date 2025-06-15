@@ -92,7 +92,7 @@ Each project maintains its own:
 ## Project Structure
 
 ```
-cc_automator3/
+cc_automator4/
 ├── run.py                      # Main orchestrator
 ├── phase_orchestrator.py       # Manages isolated phase execution
 ├── phase_prompt_generator.py   # Generates phase-specific prompts

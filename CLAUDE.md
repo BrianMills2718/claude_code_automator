@@ -82,7 +82,7 @@ Always include in implementation prompts:
 
 ## Project Structure
 ```
-cc_automator3/
+cc_automator4/
 ├── CLAUDE.md                    # This file
 ├── CC_AUTOMATOR_SPECIFICATION.md # Full specification
 ├── phase_orchestrator.py        # Main orchestration engine

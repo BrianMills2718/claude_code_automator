@@ -132,13 +132,13 @@ cp ../test_calculator/CLAUDE.md .
 git init
 
 # Run simple version (works)
-python ../cc_automator3/simple_run.py
+python ../cc_automator4/simple_run.py
 
 # Run main version (currently gets stuck)
-python ../cc_automator3/run.py --project . --milestone 1 --no-parallel --no-file-parallel
+python ../cc_automator4/run.py --project . --milestone 1 --no-parallel --no-file-parallel
 
 # Run with resume
-python ../cc_automator3/run.py --project . --resume
+python ../cc_automator4/run.py --project . --resume
 ```
 
 ## Key Files Modified

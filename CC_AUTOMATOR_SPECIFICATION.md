@@ -17,7 +17,7 @@ CC_AUTOMATOR3 is a fully autonomous code generation system that uses Claude Code
 ### System Components
 
 ```
-cc_automator3/
+cc_automator4/
 ├── CC_AUTOMATOR_SPECIFICATION.md    # This file
 ├── CLAUDE_TEMPLATE.md               # Template filled for each project
 ├── CLAUDE_TEMPLATE_QA.md            # Interactive template filling guide
@@ -477,7 +477,7 @@ project/
 ### Initial Setup
 ```bash
 cd my_project
-python cc_automator3/setup.py
+python cc_automator4/setup.py
 
 # Interactive Q&A fills template
 # Validates environment
@@ -486,7 +486,7 @@ python cc_automator3/setup.py
 
 ### Run
 ```bash
-python cc_automator3/run.py
+python cc_automator4/run.py
 
 # Runs autonomously for hours
 # Check progress.json for status
@@ -495,7 +495,7 @@ python cc_automator3/run.py
 
 ### Resume After Failure
 ```bash
-python cc_automator3/run.py --resume
+python cc_automator4/run.py --resume
 
 # Picks up from last checkpoint
 # Skips completed phases
