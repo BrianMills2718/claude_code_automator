@@ -1,139 +1,177 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # CC_AUTOMATOR3 Implementation Guide
 
-## Current Status
-Building CC_AUTOMATOR3 - an autonomous code generation system using isolated Claude Code CLI invocations.
+## Commands
 
-## Implementation Plan
-
-### Phase 1: Core Foundation (CURRENT)
-- [x] Basic phase orchestrator with streaming JSON output
-- [x] Session management with ID tracking
-- [x] Preflight validation system
-- [x] Progress tracking and checkpointing
-
-### Phase 2: Templates & Setup
-- [x] Create CLAUDE_TEMPLATE.md with project placeholders
-- [x] Create CLAUDE_TEMPLATE_QA.md for interactive setup
-- [x] Build setup.py for one-time configuration
-- [x] Milestone validation (vertical slices)
-
-### Phase 3: Phase Implementations
-- [ ] Create phase prompt templates for all 9 phases
-- [ ] Integrate think modes per phase
-- [ ] Add self-healing patterns to prompts
-- [ ] Implement evidence validation
-
-### Phase 4: Advanced Features
-- [ ] Git worktree parallelization for mechanical fixes
-- [ ] Docker environment integration
-- [ ] Full checkpoint/resume system
-- [ ] Rich visual progress display
-
-## Key Technical Decisions
-
-### CLI Invocation Pattern
-```python
-# Streaming JSON for real-time monitoring
-process = subprocess.Popen([
-    "claude", "-p", phase_prompt,
-    "--output-format", "stream-json",
-    "--max-turns", "10",
-    "--allowedTools", "Read,Write,Edit,MultiEdit,Bash"
-], stdout=subprocess.PIPE, text=True, timeout=600)
-```
-
-### Phase Sequence
-```python
-PHASES = [
-    ("research",     "Analyze requirements and explore solutions"),
-    ("planning",     "Create detailed implementation plan"),
-    ("implement",    "Build the solution"),
-    ("lint",         "Fix code style issues (flake8)"),
-    ("typecheck",    "Fix type errors (mypy --strict)"),
-    ("test",         "Fix unit tests (pytest)"),
-    ("integration",  "Fix integration tests"),
-    ("e2e",          "Verify main.py runs successfully"),
-    ("commit",       "Create git commit with changes")
-]
-```
-
-### Think Modes by Phase
-```python
-PHASE_THINK_MODES = {
-    "research": "think harder",
-    "planning": "think hard",
-    "implement": "think",
-    "lint": None,
-    "typecheck": None,
-    "test": "think",
-    "integration": "think",
-    "e2e": "think hard",
-    "commit": None
-}
-```
-
-### Self-Healing Patterns
-Always include in implementation prompts:
-1. Use relative imports (not absolute)
-2. Test behavior (not implementation)
-3. Handle missing dependencies gracefully
-4. Use pathlib for file operations
-5. Write descriptive error messages
-
-## Project Structure
-```
-cc_automator4/
-├── CLAUDE.md                    # This file
-├── CC_AUTOMATOR_SPECIFICATION.md # Full specification
-├── phase_orchestrator.py        # Main orchestration engine
-├── session_manager.py           # Track Claude sessions
-├── preflight_validator.py       # Pre-execution checks
-├── progress_tracker.py          # Progress and checkpointing
-├── setup.py                     # Interactive setup
-├── templates/
-│   ├── CLAUDE_TEMPLATE.md      # Project template
-│   ├── CLAUDE_TEMPLATE_QA.md   # Setup guide
-│   └── phase_prompts/          # Per-phase prompts
-└── tests/
-    └── test_orchestrator.py    # Test the system
-```
-
-## Testing Commands
+### Building and Running
 ```bash
-# Test basic phase execution
+# Run the automator on a project
+python run.py --project /path/to/project
+
+# Resume from last checkpoint
+python run.py --project /path/to/project --resume
+
+# Run specific milestone only
+python run.py --project /path/to/project --milestone 2
+
+# Run with Docker isolation (Phase 4)
+python run.py --project /path/to/project --docker
+
+# Disable parallel execution
+python run.py --project /path/to/project --no-parallel
+
+# Run setup for a new project
+python setup.py --project /path/to/project
+
+# Create example project
+python setup.py --project /path/to/project --example calculator
+```
+
+### Testing
+```bash
+# Run all tests
+pytest tests/ -xvs
+
+# Test specific component
 python test_orchestrator.py --phase research
 
-# Test full milestone
-python test_orchestrator.py --milestone 1
-
 # Test with real project
-python setup.py --project test_calculator
-python run.py
+python setup.py --project test_calculator --example calculator
+python run.py --project test_calculator
 ```
 
-## Key Requirements
-- Python 3.8+
-- Claude Code CLI authenticated (Claude Max subscription)
-- Git repository initialized
-- Docker (for phase 4)
-- flake8, mypy, pytest installed
+### Linting and Type Checking
+```bash
+# Run linting (F-errors only for production)
+flake8 --select=F --exclude=venv,__pycache__,.git
+
+# Run type checking
+mypy --strict .
+```
+
+## High-Level Architecture
+
+CC_AUTOMATOR3 is an autonomous code generation system that orchestrates Claude Code CLI through isolated phase executions to build complete software projects without human intervention.
+
+### Core Design Principles
+
+1. **Isolated Phase Execution**: Each of 9 phases runs in a separate Claude Code instance with fresh context
+2. **Completion Markers**: Bypasses subprocess timeout limits using file-based completion tracking
+3. **Evidence-Based Validation**: Every phase must provide verifiable proof of success
+4. **Vertical Slice Milestones**: Each milestone produces a runnable main.py
+5. **Smart Context Management**: Phases receive only relevant context from previous phases
+
+### Key Components
+
+#### Phase Orchestrator (`phase_orchestrator.py`)
+- Manages isolated Claude Code CLI invocations
+- Implements async execution with completion markers for long-running phases
+- Handles streaming JSON output for real-time monitoring
+- Tracks session IDs for precise debugging
+
+#### Run System (`run.py`)
+- Main entry point that coordinates the entire process
+- Manages milestone execution sequentially
+- Supports resume from checkpoint
+- Integrates Phase 4 features (parallel, Docker, visual)
+
+#### Phase Prompt Generator (`phase_prompt_generator.py`)
+- Creates phase-specific prompts with evidence requirements
+- Manages context flow between phases
+- Enforces self-healing patterns
+- Creates phase-specific CLAUDE.md files
+
+#### Milestone Decomposer (`milestone_decomposer.py`)
+- Parses CLAUDE.md to extract milestones
+- Validates milestones are vertical slices
+- Generates phase sequence for each milestone
+
+### Phase Execution Flow
+
+```
+For each milestone:
+  1. Research    → Analyze requirements (Write tool needed)
+  2. Planning    → Create implementation plan
+  3. Implement   → Build the solution
+  4. Lint        → Fix F-errors only (fast, mechanical)
+  5. Typecheck   → Add type hints (fast, mechanical)  
+  6. Test        → Create/fix unit tests
+  7. Integration → Test component interactions
+  8. E2E         → Verify main.py works
+  9. Commit      → Create git commit
+```
+
+### Completion Marker System
+
+To handle phases that may run longer than subprocess timeouts:
+
+```python
+# Phase creates marker when done
+completion_marker = f".cc_automator/phase_{phase_name}_complete"
+# Write "PHASE_COMPLETE" to marker file
+
+# Orchestrator polls for marker instead of waiting for process exit
+```
+
+### Think Modes Strategy
+
+Research and planning phases benefit from deeper analysis:
+- Research: Basic analysis mode
+- Planning: Thoughtful planning mode
+- Other phases: Standard execution
+
+### Self-Healing Patterns
+
+All implementation includes these patterns automatically:
+- Relative imports (not absolute)
+- Behavior testing (not implementation)
+- Graceful dependency handling
+- Pathlib for file operations
+- Descriptive error messages
+
+## Phase 4 Advanced Features
+
+### Parallel Execution
+- Lint and typecheck can run in parallel
+- Test and integration can run in parallel
+- Uses git worktrees for true isolation
+- File-level parallelization for mechanical fixes
+
+### Docker Integration
+- Mechanical phases run in containers
+- Consistent environment across systems
+- Better resource isolation
+
+### Visual Progress Display
+- Real-time phase status
+- Cost and duration tracking
+- Session ID display
+- Error reporting
+
+## Important Notes
+
+1. **For Claude Max users**: Costs shown are informational only (no actual charges)
+2. **Timeout handling**: 10-minute default, phases create completion markers for async
+3. **E2E tests**: Run with `nohup` to avoid timeout, NO mocking allowed
+4. **Evidence validation**: All phases must provide proof, not just claims
+5. **Context limits**: Each phase gets targeted context, not full history
 
 ## Development Guidelines
+
 1. Each component should be testable in isolation
-2. Use type hints throughout
+2. Use type hints throughout (mypy --strict must pass)
 3. Handle subprocess timeouts gracefully
 4. Always validate evidence from Claude
 5. Log all phase outputs for debugging
+6. Prefer file-based communication over process exit codes
 
-## Current Focus
-Start with phase_orchestrator.py implementing:
-1. Streaming JSON processing
-2. Session ID capture and storage
-3. Timeout handling
-4. Basic error recovery
+## Debugging
 
-## Notes
-- For Claude Max users, costs shown are informational only
-- 10-minute timeout per phase (configurable)
-- E2E tests run async to avoid timeout limits
-- Git worktrees will be used for parallel fixes (Phase 4)
+Check these locations for troubleshooting:
+- `.cc_automator/logs/` - Phase execution logs
+- `.cc_automator/checkpoints/` - Phase completion status
+- `.cc_automator/milestones/` - Phase outputs
+- `.cc_automator/progress.json` - Overall execution state
