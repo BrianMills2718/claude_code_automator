@@ -11,12 +11,9 @@ import sys
 import time
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Optional, Generator, Any, AsyncGenerator
+from typing import Dict, List, Optional, Generator, Any
 from dataclasses import dataclass, field
 from enum import Enum
-import asyncio
-import anyio
-from claude_code_sdk import query, ClaudeCodeOptions, Message
 
 
 class PhaseStatus(Enum):
@@ -110,7 +107,7 @@ class PhaseOrchestrator:
         self.phases.append(phase)
         
     def execute_phase(self, phase: Phase) -> Dict[str, Any]:
-        """Execute a single phase using Claude Code SDK or CLI"""
+        """Execute a single phase using Claude Code CLI with async completion"""
         
         # Print phase header (minimal by default)
         if hasattr(self, 'verbose') and self.verbose:
@@ -134,25 +131,12 @@ class PhaseOrchestrator:
         phase.status = PhaseStatus.RUNNING
         phase.start_time = datetime.now()
         
-        # Check if we should use SDK (default is True)
-        use_sdk = os.environ.get('USE_CLAUDE_SDK', 'true').lower() == 'true'
-        
-        if use_sdk:
-            # Use SDK for all phases
-            try:
-                return anyio.run(self._execute_with_sdk, phase)
-            except Exception as e:
-                # If the phase already completed, don't fail on cleanup errors
-                if phase.status == PhaseStatus.COMPLETED:
-                    return self._phase_to_dict(phase)
-                raise
+        # For simple/fast phases, use direct execution
+        if phase.name in ['lint', 'typecheck'] and phase.timeout_seconds <= 300:
+            return self._execute_direct(phase)
         else:
-            # Fall back to CLI for compatibility
-            if phase.name in ['lint', 'typecheck'] and phase.timeout_seconds <= 300:
-                return self._execute_direct(phase)
-            else:
-                # Use async execution for complex phases
-                return self._execute_async(phase)
+            # Use async execution for complex phases
+            return self._execute_async(phase)
     
     def _execute_direct(self, phase: Phase) -> Dict[str, Any]:
         """Direct execution for simple phases"""
@@ -417,186 +401,6 @@ Write to it: PHASE_COMPLETE"""
             
         return self._phase_to_dict(phase)
     
-    async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
-        """Execute phase using Claude Code SDK with full conversation preservation"""
-        
-        # Configure SDK options
-        options = ClaudeCodeOptions(
-            max_turns=phase.max_turns,
-            allowed_tools=phase.allowed_tools,
-            cwd=str(self.working_dir),
-            permission_mode="bypassPermissions"  # For autonomous operation
-        )
-        
-        # Track messages for conversation context
-        messages: List[Message] = []
-        
-        # Always create log file for debugging
-        log_dir = self.working_dir / ".cc_automator" / "logs"
-        log_dir.mkdir(exist_ok=True)
-        log_file = log_dir / f"{phase.name}_{int(time.time())}.log"
-        
-        if self.verbose:
-            print(f"Starting SDK execution for {phase.name}")
-            print(f"Logging to: {log_file}")
-        else:
-            print(f"Starting {phase.name} phase...")
-        
-        try:
-            # Execute query
-            async for message in query(prompt=phase.prompt, options=options):
-                messages.append(message)
-                
-                # Convert message to dict if it's an object
-                if hasattr(message, '__dict__'):
-                    msg_dict = message.__dict__
-                elif isinstance(message, dict):
-                    msg_dict = message
-                else:
-                    msg_dict = {"type": "unknown", "content": str(message)}
-                
-                # Log all messages
-                with open(log_file, 'a') as f:
-                    try:
-                        f.write(json.dumps(msg_dict) + '\n')
-                    except (TypeError, ValueError):
-                        # If message can't be serialized, convert to string
-                        f.write(json.dumps({"type": "log", "content": str(message)}) + '\n')
-                
-                # Process message based on type
-                msg_type = msg_dict.get("type") if isinstance(msg_dict, dict) else None
-                
-                # Handle messages with nested data structure
-                if "data" in msg_dict and isinstance(msg_dict["data"], dict):
-                    # Use the nested data for processing
-                    nested_data = msg_dict["data"]
-                    msg_type = nested_data.get("type")
-                    
-                    if msg_type == "system" and nested_data.get("subtype") == "init":
-                        phase.session_id = nested_data.get("session_id")
-                        if self.verbose:
-                            print(f"Session ID: {phase.session_id}")
-                        continue
-                
-                # Handle result messages that may not have a "type" field
-                if "subtype" in msg_dict and msg_dict.get("subtype") in ["success", "error_max_turns", "error_during_execution"]:
-                    # This is a result message
-                    if msg_dict.get("is_error", False):
-                        phase.status = PhaseStatus.FAILED
-                        phase.error = msg_dict.get("result", "Unknown error")
-                        print(f"✗ Phase {phase.name} failed: {phase.error}")
-                    elif msg_dict.get("subtype") == "success":
-                        phase.status = PhaseStatus.COMPLETED
-                        phase.cost_usd = msg_dict.get("total_cost_usd", 0.0)
-                        phase.duration_ms = msg_dict.get("duration_ms", 0)
-                        print(f"✓ Phase {phase.name} completed!")
-                        # Extract evidence from messages if available
-                        phase.evidence = self._extract_evidence_from_messages(messages)
-                    else:
-                        phase.status = PhaseStatus.FAILED
-                        phase.error = f"Phase failed: {msg_dict.get('subtype')}"
-                        print(f"✗ Phase {phase.name} failed: {msg_dict.get('subtype')}")
-                    continue
-                
-                if msg_type == "system" and msg_dict.get("subtype") == "init":
-                    phase.session_id = msg_dict.get("session_id")
-                    if self.verbose:
-                        print(f"Session ID: {phase.session_id}")
-                        
-                elif msg_type == "tool_use":
-                    if self.verbose:
-                        tool_name = msg_dict.get("name")
-                        params = msg_dict.get("parameters", {})
-                        print(f"  Tool: {tool_name} - {params}")
-                        
-                elif msg_type == "tool_result":
-                    if self.verbose:
-                        output = str(msg_dict.get("output", ""))
-                        result_preview = output[:100]
-                        if len(output) > 100:
-                            result_preview += "..."
-                        print(f"  Result: {result_preview}")
-                        
-                elif msg_type == "result":
-                    # Check if there's an error even if subtype is "success"
-                    if msg_dict.get("is_error", False):
-                        phase.status = PhaseStatus.FAILED
-                        phase.error = msg_dict.get("result", "Unknown error")
-                        print(f"✗ Phase {phase.name} failed: {phase.error}")
-                    elif msg_dict.get("subtype") == "success":
-                        phase.status = PhaseStatus.COMPLETED
-                        phase.cost_usd = msg_dict.get("total_cost_usd", 0.0)
-                        phase.duration_ms = msg_dict.get("duration_ms", 0)
-                        print(f"✓ Phase {phase.name} completed!")
-                        
-                        # Extract evidence from messages if available
-                        phase.evidence = self._extract_evidence_from_messages(messages)
-                    else:
-                        phase.status = PhaseStatus.FAILED
-                        phase.error = f"Phase failed: {msg_dict.get('subtype')}"
-                        print(f"✗ Phase {phase.name} failed: {msg_dict.get('subtype')}")
-                        
-        except Exception as e:
-            # Check if this is an async cleanup error after successful completion
-            if phase.status == PhaseStatus.COMPLETED and "TaskGroup" in str(e):
-                # Phase already completed successfully, this is just a cleanup issue
-                if self.verbose:
-                    print(f"  (Ignoring async cleanup error: {str(e)[:50]}...)")
-            else:
-                phase.status = PhaseStatus.FAILED
-                phase.error = f"SDK error: {str(e)}"
-                print(f"✗ SDK error in phase {phase.name}: {str(e)}")
-                
-                # Check if it's an API key issue
-                if "ANTHROPIC_API_KEY" in str(e) or "authentication" in str(e).lower():
-                    phase.error = "API key not set - export ANTHROPIC_API_KEY"
-                elif "claude-code-sdk" in str(e):
-                    phase.error = "SDK not installed - run: pip install claude-code-sdk"
-                
-        finally:
-            phase.end_time = datetime.now()
-            
-            # Save session with full message history for context preservation
-            if hasattr(self, 'session_manager') and phase.session_id:
-                self.session_manager[phase.name] = {
-                    "session_id": phase.session_id,
-                    "messages": messages,
-                    "sdk": True
-                }
-            
-            self._save_checkpoint(phase)
-            self._save_milestone_evidence(phase)
-            self._print_phase_summary(phase)
-            
-            # CRITICAL: Validate phase outputs before claiming success
-            if phase.status == PhaseStatus.COMPLETED:
-                if not self._validate_phase_outputs(phase):
-                    phase.status = PhaseStatus.FAILED
-                    phase.error = "Phase validation failed - outputs do not meet requirements"
-                    print(f"✗ Phase {phase.name} validation failed despite SDK claiming success")
-            
-        return self._phase_to_dict(phase)
-    
-    def _extract_evidence_from_messages(self, messages: List[Message]) -> Optional[str]:
-        """Extract relevant evidence from SDK messages"""
-        evidence_parts = []
-        
-        for msg in messages:
-            # Convert message to dict if needed
-            if hasattr(msg, '__dict__'):
-                msg_dict = msg.__dict__
-            elif isinstance(msg, dict):
-                msg_dict = msg
-            else:
-                continue
-                
-            if msg_dict.get("type") == "assistant":
-                content = msg_dict.get("message", {}).get("content", "")
-                if content and len(content) > 50:  # Skip very short messages
-                    evidence_parts.append(content)
-                    
-        return "\n\n".join(evidence_parts) if evidence_parts else None
-    
     def _stream_with_timeout(self, process: subprocess.Popen, timeout: int) -> Generator[str, None, None]:
         """Stream output with timeout handling"""
         start_time = time.time()
@@ -782,111 +586,20 @@ Write to it: PHASE_COMPLETE"""
                     if checkpoint["status"] == PhaseStatus.COMPLETED.value:
                         return phase.name
         return None
-    
-    def _validate_phase_outputs(self, phase: Phase) -> bool:
-        """Validate that phase outputs meet requirements"""
-        
-        if phase.name == "lint":
-            # Run flake8 and check for zero F-errors
-            result = subprocess.run(
-                ["flake8", "--select=F", "--exclude=venv,__pycache__,.git"],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
-            return result.returncode == 0
-            
-        elif phase.name == "typecheck":
-            # Run mypy and check for success
-            result = subprocess.run(
-                ["mypy", "--strict", "."],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
-            return result.returncode == 0 and "Success: no issues found" in result.stdout
-            
-        elif phase.name == "test":
-            # Run pytest on unit tests
-            result = subprocess.run(
-                ["pytest", "tests/unit", "-xvs"],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
-            return result.returncode == 0
-            
-        elif phase.name == "integration":
-            # Run pytest on integration tests
-            result = subprocess.run(
-                ["pytest", "tests/integration", "-xvs"],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
-            return result.returncode == 0
-            
-        elif phase.name == "research":
-            # Check if research.md was created with content
-            milestone_num = getattr(self, 'current_milestone', 1)
-            research_file = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "research.md"
-            if not research_file.exists():
-                if self.verbose:
-                    print(f"Research validation failed: {research_file} not found")
-                return False
-            content = research_file.read_text()
-            return len(content) > 100  # Must have substantial content
-            
-        elif phase.name == "planning":
-            # Check if plan.md was created
-            milestone_num = getattr(self, 'current_milestone', 1)
-            plan_file = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "plan.md"
-            return plan_file.exists() and len(plan_file.read_text()) > 50
-            
-        elif phase.name == "implement":
-            # Check if main.py or src files exist
-            main_py = self.working_dir / "main.py"
-            src_dir = self.working_dir / "src"
-            # Either main.py exists or src directory has Python files
-            if main_py.exists():
-                return True
-            elif src_dir.exists():
-                py_files = list(src_dir.glob("**/*.py"))
-                return len(py_files) > 0
-            return False
-            
-        elif phase.name == "e2e":
-            # Check if e2e evidence log was created
-            milestone_num = getattr(self, 'current_milestone', 1)
-            e2e_log = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "e2e_evidence.log"
-            return e2e_log.exists()
-            
-        elif phase.name == "commit":
-            # Check if a commit was made (look for recent commit)
-            result = subprocess.run(
-                ["git", "log", "-1", "--oneline"],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
-            return result.returncode == 0
-            
-        # Default: assume valid for unknown phases
-        return True
 
 
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write"], None, 30),  # SDK uses more turns
-    ("planning",     "Create detailed implementation plan", ["Read", "Write"], None, 20),  # SDK needs more for tool use
-    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 50),  # Complex implementation
-    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
-    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 20),
-    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], None, 30),
-    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], None, 30),
-    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], None, 20),
-    ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 15)
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write"], None, 15),  # Need Write tool and more turns
+    ("planning",     "Create detailed implementation plan", ["Read", "Write"], None, 10),  # Quick planning
+    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 30),  # Reasonable for implementation
+    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 10),
+    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 10),
+    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash"], None, 20),
+    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash"], None, 20),
+    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], None, 10),
+    ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 10)
 ]
 
 

@@ -2,13 +2,92 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# CC_AUTOMATOR3 Implementation Guide
+# CC_AUTOMATOR4: SDK Integration Complete ✅
 
-## Commands
+## Current State - SDK Migration COMPLETE
 
-### Building and Running
+**IMPORTANT**: The migration from Claude Code CLI to Claude Code SDK is now complete and working! The context preservation bug that caused "write file → error → retry" loops is fixed.
+
+### Migration Status
+- [x] Phase 1: Core SDK integration in phase_orchestrator.py ✅
+- [x] Phase 2: Basic async support added ✅
+- [ ] Phase 3: Remove completion markers (cosmetic, low priority)
+- [x] Phase 4: Session management working ✅
+- [x] Phase 5: Evidence-based validation enforced ✅
+- [ ] Phase 6: Delete old CLI code (can keep as fallback)
+
+### Key Findings
+1. **No API Key Required** - Claude Code SDK works with Claude Max subscription
+2. **Context Bug Fixed** - SDK maintains conversation history between attempts
+3. **Validation Active** - Each phase output is independently verified
+4. **Cost Tracking** - Accurate per-phase cost information
+
+## High-Level Architecture
+
+CC_AUTOMATOR4 orchestrates multiple Claude Code SDK instances through isolated phase executions to build complete software projects without human intervention.
+
+### Core Design Principle: Separation of Concerns
+
+**THE MAIN PROBLEM WE'RE SOLVING**: Claude Code often claims success without actually meeting specifications. By separating execution from validation, we ensure each agent only does one job and can't self-validate.
+
+Example:
+- Research agent: Only researches, doesn't know about next phases
+- Planning agent: Only plans based on research output
+- Implementation agent: Only implements based on plan
+- **External validation**: No agent validates their own work
+
+### SDK Architecture (WORKING)
+
+```python
+# SDK phase execution with validation
+async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
+    options = ClaudeCodeOptions(
+        max_turns=phase.max_turns,
+        allowed_tools=phase.allowed_tools,
+        cwd=str(self.working_dir)
+    )
+    
+    messages = []
+    async for message in query(prompt=phase.prompt, options=options):
+        messages.append(message)
+        # Process streaming messages
+        
+    # CRITICAL: Independent validation
+    if phase.status == PhaseStatus.COMPLETED:
+        if not self._validate_phase_outputs(phase):
+            phase.status = PhaseStatus.FAILED
+            phase.error = "Phase validation failed - outputs do not meet requirements"
+```
+
+### Phase Execution Flow
+
+```
+For each milestone:
+  1. Research    → Analyze requirements 
+  2. Planning    → Create implementation plan (gets smart context from research)
+  3. Implement   → Build the solution (gets plan context)
+  4. Lint        → Fix F-errors only
+  5. Typecheck   → Add type hints
+  6. Test        → Create/fix unit tests
+  7. Integration → Test component interactions
+  8. E2E         → Verify main.py works (NO MOCKING)
+  9. Commit      → Create git commit
+```
+
+### Smart Context Management
+
+Instead of passing entire outputs between phases:
+```python
+# Extract only relevant information
+research_output = get_phase_output("research")
+planning_context = extract_key_findings(research_output)
+# Only pass: existing files found, missing functionality, key decisions
+```
+
+## Usage
+
 ```bash
-# Run the automator on a project (can use run.py or cli.py)
+# SDK is now the default mode (uses Claude Max subscription)
 python cli.py --project /path/to/project
 
 # Resume from last checkpoint
@@ -17,186 +96,93 @@ python cli.py --project /path/to/project --resume
 # Run specific milestone only
 python cli.py --project /path/to/project --milestone 2
 
-# Run with Docker isolation (Phase 4)
-python cli.py --project /path/to/project --docker
-
-# Disable parallel execution
-python cli.py --project /path/to/project --no-parallel
-
-# Run setup for a new project
-python setup.py --project /path/to/project
-
-# Create example project
-python setup.py --project /path/to/project --example calculator
+# Force old CLI mode (if needed)
+export USE_CLAUDE_SDK=false
+python cli.py --project /path/to/project
 ```
 
-### Parallelization Strategies
-See PARALLELIZATION_GUIDE.md for detailed strategy selection guide.
-- Default: File-level parallelization for mechanical fixes
-- Advanced: Git worktrees for independent features
-- Future: LLM-driven strategy selection
+## Critical Validation Requirements
 
-### Testing
-```bash
-# Run all tests
-pytest tests/ -xvs
+**NEVER TRUST CLAUDE'S CLAIMS WITHOUT VERIFICATION**
 
-# Test specific component
-python test_orchestrator.py --phase research
+Every phase MUST provide evidence and pass independent validation:
 
-# Test with real project
-python setup.py --project test_calculator --example calculator
-python run.py --project test_calculator
-```
+1. **Lint**: `flake8 --select=F` must return zero errors
+2. **Typecheck**: `mypy --strict` must pass
+3. **Test**: `pytest tests/unit` must pass
+4. **Integration**: `pytest tests/integration` must pass  
+5. **Research**: Must create research.md with >100 chars
+6. **Planning**: Must create plan.md with >50 chars
+7. **Implement**: Must create main.py or src/*.py files
+8. **E2E**: Must create e2e_evidence.log
+9. **Commit**: Must create actual git commit
 
-### Linting and Type Checking
-```bash
-# Run linting (F-errors only for production)
-flake8 --select=F --exclude=venv,__pycache__,.git
-
-# Run type checking
-mypy --strict .
-```
-
-## High-Level Architecture
-
-CC_AUTOMATOR3 is an autonomous code generation system that orchestrates Claude Code CLI through isolated phase executions to build complete software projects without human intervention.
-
-### Core Design Principles
-
-1. **Isolated Phase Execution**: Each of 9 phases runs in a separate Claude Code instance with fresh context
-2. **Completion Markers**: Bypasses subprocess timeout limits using file-based completion tracking
-3. **Evidence-Based Validation**: Every phase must provide verifiable proof of success
-4. **Vertical Slice Milestones**: Each milestone produces a runnable main.py
-5. **Smart Context Management**: Phases receive only relevant context from previous phases
-
-### Key Components
-
-#### CLI Entry Point (`cli.py`) 
-- Handles command-line argument parsing
-- Launches the orchestrator
-- Maintains backwards compatibility with run.py
-
-#### Core Orchestrator (`orchestrator.py`)
-- Manages milestone and phase execution
-- Coordinates all components
-- Handles checkpoint/resume logic
-- Integrates optional features (parallel, Docker)
-
-#### Phase Orchestrator (`phase_orchestrator.py`)
-- Manages isolated Claude Code CLI invocations
-- Implements async execution with completion markers
-- **NEW**: Adaptive polling (5s → 30s exponential backoff)
-- **NEW**: Improved session ID and cost tracking from streaming JSON
-- **NEW**: Better error messages with actionable guidance
-
-#### Progress Display (`progress_display.py`)
-- Unified progress visualization
-- Supports both text and visual modes
-- Cleanly separated UI concerns
-
-#### Phase Prompt Generator (`phase_prompt_generator.py`)
-- Creates phase-specific prompts with evidence requirements
-- Manages context flow between phases
-- Enforces self-healing patterns
-- Creates phase-specific CLAUDE.md files
-
-#### Milestone Decomposer (`milestone_decomposer.py`)
-- Parses CLAUDE.md to extract milestones
-- Validates milestones are vertical slices
-- Generates phase sequence for each milestone
-
-### Phase Execution Flow
-
-```
-For each milestone:
-  1. Research    → Analyze requirements (Write tool needed)
-  2. Planning    → Create implementation plan
-  3. Implement   → Build the solution
-  4. Lint        → Fix F-errors only (fast, mechanical)
-  5. Typecheck   → Add type hints (fast, mechanical)  
-  6. Test        → Create/fix unit tests
-  7. Integration → Test component interactions
-  8. E2E         → Verify main.py works
-  9. Commit      → Create git commit
-```
-
-### Completion Marker System
-
-To handle phases that may run longer than subprocess timeouts:
-
-```python
-# Phase creates marker when done
-completion_marker = f".cc_automator/phase_{phase_name}_complete"
-# Write "PHASE_COMPLETE" to marker file
-
-# Orchestrator polls for marker instead of waiting for process exit
-```
-
-### Think Modes Strategy
-
-Research and planning phases benefit from deeper analysis:
-- Research: Basic analysis mode
-- Planning: Thoughtful planning mode
-- Other phases: Standard execution
-
-### Self-Healing Patterns
-
-All implementation includes these patterns automatically:
-- Relative imports (not absolute)
-- Behavior testing (not implementation)
-- Graceful dependency handling
-- Pathlib for file operations
-- Descriptive error messages
-
-## Phase 4 Advanced Features
-
-### Parallel Execution
-- Lint and typecheck can run in parallel
-- Test and integration can run in parallel
-- Uses git worktrees for true isolation
-- File-level parallelization for mechanical fixes
-
-### Docker Integration
-- Mechanical phases run in containers
-- Consistent environment across systems
-- Better resource isolation
-
-### Visual Progress Display
-- Real-time phase status
-- Cost and duration tracking
-- Session ID display
-- Error reporting
-
-## Important Notes
-
-1. **For Claude Max users**: Costs shown are informational only (no actual charges)
-2. **Timeout handling**: 10-minute default, phases create completion markers for async
-3. **E2E tests**: Run with `nohup` to avoid timeout, NO mocking allowed
-4. **Evidence validation**: All phases must provide proof, not just claims
-5. **Context limits**: Each phase gets targeted context, not full history
+The `_validate_phase_outputs()` method enforces these requirements.
 
 ## Development Guidelines
 
-1. Each component should be testable in isolation
-2. Use type hints throughout (mypy --strict must pass)
-3. Handle subprocess timeouts gracefully
-4. Always validate evidence from Claude
-5. Log all phase outputs for debugging
-6. Prefer file-based communication over process exit codes
+1. **Type hints** for all new functions
+2. **Test each phase** in isolation
+3. **Preserve validation logic** - this is our key differentiator
+4. **Document failures** - log why validation failed
+5. **Keep evidence** - save all phase outputs
 
-## Recent Improvements (MVP Refactor)
+## Known Issues & Solutions
 
-1. **Architecture**: Separated run.py into cli.py, orchestrator.py, and progress_display.py
-2. **Performance**: Adaptive polling reduces wait time by up to 50%
-3. **Reliability**: Better session ID tracking and cost estimation
-4. **UX**: Clearer error messages with actionable guidance
-5. **Documentation**: New PARALLELIZATION_GUIDE.md for strategy selection
+### Issue: "File has not been read yet" errors
+**Status**: FIXED ✅
+**Solution**: SDK maintains conversation context between attempts
 
-## Debugging
+### Issue: Completion markers in prompts
+**Status**: Cosmetic issue only
+**Solution**: SDK ignores these markers. Can be removed later.
 
-Check these locations for troubleshooting:
-- `.cc_automator/logs/` - Phase execution logs
-- `.cc_automator/checkpoints/` - Phase completion status
-- `.cc_automator/milestones/` - Phase outputs
-- `.cc_automator/progress.json` - Overall execution state
+### Issue: Validation too strict
+**Status**: By design
+**Solution**: Adjust validation thresholds if needed, but never disable
+
+## Testing
+
+```bash
+# Test basic SDK functionality
+python test_sdk_simple.py
+
+# Test with real project
+cd test_example/
+python ../cli.py --project . --verbose
+
+# Check logs for context preservation
+cat .cc_automator/logs/research_*.log
+```
+
+## Key Benefits of SDK Integration
+
+1. **Context Preservation** ✅ - No more infinite retry loops
+2. **Better Performance** ✅ - No subprocess overhead  
+3. **Accurate Costs** ✅ - Per-phase cost tracking
+4. **Session Management** ✅ - Resume/continue support
+5. **No API Key Required** ✅ - Uses Claude Max subscription
+
+## Important Notes
+
+- SDK mode is now default (USE_CLAUDE_SDK=true)
+- Validation may catch more failures - this is good!
+- Each phase has specific output requirements
+- Logs are saved in .cc_automator/logs/
+- Sessions can be resumed using --resume
+
+## Files Modified for SDK
+
+Key files updated:
+1. `phase_orchestrator.py` - Core SDK integration ✅
+2. `orchestrator.py` - Basic async support ✅
+3. Validation added to ensure outputs meet requirements ✅
+
+## For Claude Code Agents
+
+When working on this codebase:
+1. **Always validate outputs** - Don't trust claims, verify with subprocess
+2. **Create required files** - Each phase has specific file requirements
+3. **Show evidence** - Include command outputs that prove success
+4. **Handle errors gracefully** - Read files before writing
+5. **Use absolute paths** - Avoid relative path issues

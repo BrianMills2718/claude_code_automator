@@ -265,6 +265,15 @@ class CCAutomatorOrchestrator:
         milestone_name = f"Milestone {milestone.number}"
         previous_output = None
         
+        # Clean up milestone directory if starting fresh (not resuming)
+        if self.current_phase_idx == 0:
+            milestone_dir = self.project_dir / ".cc_automator" / "milestones" / f"milestone_{milestone.number}"
+            if milestone_dir.exists():
+                import shutil
+                shutil.rmtree(milestone_dir)
+                if self.verbose:
+                    print(f"  Cleaned up existing milestone directory: {milestone_dir}")
+        
         # Set current milestone on orchestrator
         if self.orchestrator:
             self.orchestrator.current_milestone = milestone.number
