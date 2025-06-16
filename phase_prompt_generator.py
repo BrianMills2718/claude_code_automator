@@ -124,7 +124,13 @@ async def create_user(db: AsyncSession, user_data: dict):
 - pytest with async support
 - Test database with SQLite
 
-You may use WebSearch if needed for current information, but don't let it block progress. If WebSearch times out or fails, continue without it and use your existing knowledge.""",
+RESEARCH APPROACH:
+1. First, use your existing knowledge of current library practices (you know the 2024 patterns)
+2. Only use WebSearch if you need very specific version numbers or recent API changes
+3. If WebSearch takes more than 30 seconds or fails, continue with your knowledge
+4. Focus on creating actionable research that guides implementation
+
+Your existing knowledge of FastAPI, SQLAlchemy 2.0, Pydantic v2, etc. is comprehensive and current.""",
 
             "planning": f"""
 {milestone_context}
@@ -293,21 +299,46 @@ Only complete this phase when pytest runs successfully.
 
 Verify main.py works correctly for Milestone {milestone.number}.
 
+### Testing Strategy:
+
+**If main.py is interactive (waits for user input):**
+- Use echo to provide input: `echo "2 + 3\nquit" | python main.py`
+- Or test with timeout: `timeout 5s python main.py` 
+- Or test importing: `python -c "import main; print('Import successful')"`
+
+**If main.py is non-interactive:**
+- Run directly: `python main.py`
+
 ### Tasks:
-1. Run: `python main.py`
-2. Test all features for this milestone
-3. Verify success criteria are met
-4. Ensure user-friendly interface
+1. First check if main.py is interactive by looking at the code
+2. Test main.py using appropriate method (with input if interactive)
+3. Test all features for this milestone  
+4. Verify success criteria are met
 5. Test error handling with invalid inputs
+6. Ensure program exits cleanly
 
 ### Success Criteria to Verify:
 {chr(10).join(f"- {criterion}" for criterion in milestone.success_criteria)}
 
+### Example for interactive calculator:
+```bash
+# Test basic operations
+echo "2 + 3" | python main.py
+echo "10 / 2" | python main.py  
+echo "quit" | python main.py
+
+# Test error handling
+echo "abc + def" | python main.py
+echo "5 / 0" | python main.py
+```
+
 ### Evidence Required:
-1. Show main.py running successfully
+1. Show main.py running successfully (with appropriate input method)
 2. Demonstrate each success criterion working
 3. Include example inputs and outputs
 4. Save full session log to: .cc_automator/milestones/milestone_{milestone.number}/e2e_evidence.log
+
+**IMPORTANT:** Never run interactive programs without providing input - they will hang forever!
 
 Remember: NO mocking in E2E tests - must be real functionality!
 """,
