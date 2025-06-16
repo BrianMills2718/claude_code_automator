@@ -48,6 +48,9 @@ class PhasePromptGenerator:
                         self.context_manager.save_phase_output(
                             prev_phase, milestone.number, previous_phase_output
                         )
+            elif previous_phase_output:
+                # If context manager returns empty but we have previous output, use fallback
+                prompt = self._add_previous_context(prompt, phase_type, previous_phase_output)
         else:
             # Fallback to old method
             if previous_phase_output:
@@ -91,24 +94,37 @@ class PhasePromptGenerator:
         prompts = {
             "research": f"""Research requirements for: {milestone.name}
 
-STEP 1: Check existing code
-- What files exist in the project?
-- What's already implemented?
+1. Check what exists in main.py and requirements.txt
 
-STEP 2: Quick research (1-2 searches max)
-- Search for: "FastAPI CRUD async SQLAlchemy 2.0 2024"
-- Focus on finding working code examples
+2. Write your research findings to: .cc_automator/milestones/milestone_{milestone.number}/research.md
 
-STEP 3: Write concise findings
-Create file: .cc_automator/milestones/milestone_{milestone.number}/research.md
+The research.md file must contain:
+# Research Findings for {milestone.name}
 
-Include:
-1. What exists in project
-2. Key libraries needed (with versions)
-3. One good code example/pattern
-4. Testing approach
+## What Exists
+- Summary of main.py 
+- Current requirements.txt status
 
-Keep it brief and focused - this is just research, not implementation.""",
+## Libraries Needed
+- fastapi>=0.104.0
+- sqlalchemy[asyncio]>=2.0.0
+- pydantic>=2.0.0
+- uvicorn[standard]>=0.24.0
+
+## Basic CRUD Pattern
+```python
+# Example async CRUD pattern
+from sqlalchemy.ext.asyncio import AsyncSession
+
+async def create_user(db: AsyncSession, user_data: dict):
+    # Basic pattern here
+```
+
+## Testing Approach
+- pytest with async support
+- Test database with SQLite
+
+You may use WebSearch if needed for current information, but don't let it block progress. If WebSearch times out or fails, continue without it and use your existing knowledge.""",
 
             "planning": f"""
 {milestone_context}
@@ -210,6 +226,17 @@ def test_function_error_case():
 ### Evidence Required:
 1. Show created test files
 2. Show pytest output with all tests passing
+
+### IMPORTANT: Verify Before Completing
+Before marking this phase complete, run:
+`pytest tests/unit -xvs`
+
+All tests must pass. If any fail or pytest can't find tests:
+- Check test directory location
+- Fix failing tests
+- Ensure tests are in tests/unit/
+
+Only complete when all unit tests pass.
 """,
 
             "integration": f"""
@@ -248,6 +275,17 @@ def test_calculator_workflow():
 ### Evidence Required:
 1. Show created integration test files
 2. Show pytest output with all tests passing
+
+### IMPORTANT: Verify Before Completing
+Before marking this phase complete, run:
+`pytest tests/integration -xvs`
+
+If it fails (e.g., directory not found), fix the issue:
+- Create missing directories
+- Move test files if needed
+- Ensure tests are in the correct location
+
+Only complete this phase when pytest runs successfully.
 """,
 
             "e2e": f"""
@@ -272,6 +310,53 @@ Verify main.py works correctly for Milestone {milestone.number}.
 4. Save full session log to: .cc_automator/milestones/milestone_{milestone.number}/e2e_evidence.log
 
 Remember: NO mocking in E2E tests - must be real functionality!
+""",
+
+            "validate": f"""
+## Implementation Validation Phase
+
+Thoroughly validate that ALL functionality for {milestone.name} is REAL and working.
+
+### Critical Checks:
+
+1. **No Mocks in Production Code**
+   - Run: `grep -r "mock\\|Mock\\|TODO\\|FIXME\\|NotImplemented" --include="*.py" --exclude-dir=tests .`
+   - Ensure NO mocks/stubs in main code (only in tests)
+
+2. **Real Implementations**
+   - Check main.py and src/ files for actual implementations
+   - No placeholder returns like 'return None # TODO'
+   - No hardcoded fake responses
+
+3. **Test ALL Features**
+   - Run main.py and test EVERY feature for this milestone
+   - Use real inputs, not test data
+   - Verify actual functionality works as expected
+
+### Success Criteria to Validate:
+{chr(10).join(f"- {criterion}" for criterion in milestone.success_criteria)}
+
+### Required Actions:
+1. Run grep to check for mocks/stubs
+2. Test each feature with real examples
+3. Fix ANY mocked/stubbed code you find
+4. Create validation report: .cc_automator/milestones/milestone_{milestone.number}/validation_report.md
+
+The report must confirm:
+- No mocks/stubs in production code
+- All features tested and working
+- Real examples of each feature
+
+IMPORTANT: If you find ANY mocked functionality, you MUST implement it for real before completing this phase.
+
+### FINAL VERIFICATION
+Before completing, run these checks:
+1. `grep -r "mock\|Mock\|TODO\|FIXME\|NotImplemented" --include="*.py" --exclude-dir=tests .`
+   - Must return NO matches in production code
+2. `python main.py` with test inputs
+   - Must run without errors
+
+Only complete when ALL checks pass.
 """,
 
             "commit": f"""

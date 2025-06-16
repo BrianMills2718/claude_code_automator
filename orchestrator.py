@@ -397,7 +397,10 @@ class CCAutomatorOrchestrator:
                       f"milestone_{milestone.number}" / f"{phase_type}.md")
         if output_file.exists():
             with open(output_file) as f:
-                return f.read()
+                content = f.read()
+                if self.verbose:
+                    print(f"  Captured {phase_type} output: {len(content)} chars")
+                return content
         
         # For implement phase, capture what was built
         if phase_type == "implement":

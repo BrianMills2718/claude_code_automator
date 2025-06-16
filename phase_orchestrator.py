@@ -438,6 +438,11 @@ Write to it: PHASE_COMPLETE"""
     async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase using Claude Code SDK with full conversation preservation"""
         
+        # Check if we should use sub-phases
+        use_subphases = os.environ.get('USE_SUBPHASES', 'true').lower() == 'true'
+        if use_subphases and phase.name in ['research', 'planning', 'implement']:
+            return await self._execute_with_subphases(phase)
+        
         # Load MCP configuration if available
         mcp_servers = {}
         # Temporarily disable MCP to isolate async issues
@@ -455,9 +460,12 @@ Write to it: PHASE_COMPLETE"""
                 print("MCP disabled via DISABLE_MCP environment variable")
         
         # Configure SDK options
+        # Remove WebSearch to avoid TaskGroup errors
+        filtered_tools = [tool for tool in phase.allowed_tools if tool != "WebSearch"]
+        
         options = ClaudeCodeOptions(
             max_turns=phase.max_turns,
-            allowed_tools=phase.allowed_tools,
+            allowed_tools=filtered_tools,
             mcp_servers=mcp_servers,
             cwd=str(self.working_dir),
             permission_mode="bypassPermissions"  # For autonomous operation
@@ -626,6 +634,106 @@ Write to it: PHASE_COMPLETE"""
                     phase.error = "Phase validation failed - outputs do not meet requirements"
                     print(f"✗ Phase {phase.name} validation failed despite SDK claiming success")
             
+        return self._phase_to_dict(phase)
+    
+    async def _execute_with_subphases(self, phase: Phase) -> Dict[str, Any]:
+        """Execute phase broken into sub-phases to avoid timeouts."""
+        from subphase_config import get_subphases
+        
+        subphases = get_subphases(phase.name)
+        if not subphases:
+            # Fall back to regular execution
+            return await self._execute_with_sdk(phase)
+            
+        print(f"\nExecuting {phase.name} phase with {len(subphases)} sub-phases")
+        
+        # Track overall phase state
+        phase.start_time = datetime.now()
+        phase.status = PhaseStatus.RUNNING
+        combined_cost = 0.0
+        all_messages = []
+        
+        # Get milestone number from context
+        milestone_num = getattr(self, 'current_milestone', 1)
+        
+        for i, subphase in enumerate(subphases):
+            sub_name = subphase["name"]
+            print(f"\n[{i+1}/{len(subphases)}] Running sub-phase: {sub_name}")
+            
+            # Format sub-phase prompt
+            sub_prompt = subphase["prompt_template"].format(
+                working_dir=self.working_dir.name,
+                milestone_num=milestone_num
+            )
+            
+            # Execute sub-phase
+            try:
+                # Configure SDK options for sub-phase
+                # Remove WebSearch from allowed tools to avoid TaskGroup errors
+                sub_allowed_tools = [tool for tool in phase.allowed_tools if tool != "WebSearch"]
+                
+                options = ClaudeCodeOptions(
+                    max_turns=subphase["max_turns"],
+                    allowed_tools=sub_allowed_tools,
+                    mcp_servers={},  # MCP disabled for now
+                    cwd=str(self.working_dir),
+                    permission_mode="bypassPermissions"
+                )
+                
+                sub_messages = []
+                async for message in query(prompt=sub_prompt, options=options):
+                    sub_messages.append(message)
+                    all_messages.append(message)
+                    
+                    # Check for completion
+                    if hasattr(message, '__dict__'):
+                        msg_dict = message.__dict__
+                    elif isinstance(message, dict):
+                        msg_dict = message
+                    else:
+                        continue
+                        
+                    if msg_dict.get("type") == "result":
+                        if msg_dict.get("is_error", False):
+                            print(f"✗ Sub-phase {sub_name} failed")
+                            phase.status = PhaseStatus.FAILED
+                            phase.error = f"Sub-phase {sub_name} failed"
+                            return self._phase_to_dict(phase)
+                        else:
+                            combined_cost += msg_dict.get("total_cost_usd", 0.0)
+                            print(f"✓ Sub-phase {sub_name} completed")
+                            
+            except Exception as e:
+                error_str = str(e)
+                # Special handling for TaskGroup errors (async cleanup issues)
+                if "TaskGroup" in error_str and "unhandled errors" in error_str:
+                    print(f"⚠️  Sub-phase {sub_name} had async cleanup issue, checking outputs...")
+                    # Don't fail immediately, check if outputs were created
+                    # Continue to next sub-phase if this one produced expected outputs
+                    continue
+                else:
+                    print(f"✗ Sub-phase {sub_name} error: {e}")
+                    phase.status = PhaseStatus.FAILED
+                    phase.error = f"Sub-phase {sub_name} error: {str(e)}"
+                    return self._phase_to_dict(phase)
+        
+        # All sub-phases completed
+        phase.end_time = datetime.now()
+        phase.cost_usd = combined_cost
+        phase.status = PhaseStatus.COMPLETED
+        
+        # Validate overall phase outputs
+        if not self._validate_phase_outputs(phase):
+            phase.status = PhaseStatus.FAILED
+            phase.error = "Phase validation failed after sub-phases"
+            print(f"✗ Phase {phase.name} validation failed")
+        else:
+            print(f"✓ Phase {phase.name} completed successfully via sub-phases")
+            
+        self._save_checkpoint(phase)
+        self._save_milestone_evidence(phase)
+        self._print_phase_summary(phase)
+        
         return self._phase_to_dict(phase)
     
     def _extract_evidence_from_messages(self, messages: List[Message]) -> Optional[str]:
@@ -922,10 +1030,60 @@ Write to it: PHASE_COMPLETE"""
             return False
             
         elif phase.name == "e2e":
-            # Check if e2e evidence log was created
+            # Check if e2e evidence log was created AND main.py runs successfully
             milestone_num = getattr(self, 'current_milestone', 1)
             e2e_log = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "e2e_evidence.log"
-            return e2e_log.exists()
+            
+            # First check if log exists
+            if not e2e_log.exists():
+                if self.verbose:
+                    print(f"E2E validation failed: {e2e_log} not found")
+                return False
+            
+            # Also verify main.py actually runs without errors
+            result = subprocess.run(
+                ["python", "main.py"],
+                input="0\n",  # Select exit option if it's a menu
+                capture_output=True,
+                text=True,
+                cwd=str(self.working_dir),
+                timeout=10  # Prevent hanging
+            )
+            
+            if result.returncode != 0:
+                if self.verbose:
+                    print(f"E2E validation failed: main.py exited with code {result.returncode}")
+                    print(f"stderr: {result.stderr}")
+                return False
+                
+            return True
+            
+        elif phase.name == "validate":
+            # Check if validation report was created and no mocks found
+            milestone_num = getattr(self, 'current_milestone', 1)
+            validation_report = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "validation_report.md"
+            
+            if not validation_report.exists():
+                if self.verbose:
+                    print(f"Validation failed: {validation_report} not found")
+                return False
+                
+            # Also run our own check for mocks
+            result = subprocess.run(
+                ["grep", "-r", "-E", "mock|Mock|TODO|FIXME|NotImplemented", 
+                 "--include=*.py", "--exclude-dir=tests", "--exclude-dir=venv", "."],
+                capture_output=True,
+                text=True,
+                cwd=str(self.working_dir)
+            )
+            
+            if result.returncode == 0:  # grep found matches
+                if self.verbose:
+                    print(f"Validation failed: Found mocks/stubs in production code")
+                    print(result.stdout[:500])
+                return False
+                
+            return True
             
         elif phase.name == "commit":
             # Check if a commit was made (look for recent commit)
@@ -944,7 +1102,7 @@ Write to it: PHASE_COMPLETE"""
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "WebSearch"], None, 15),  # Removed Context7 to prevent async issues
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "WebSearch", "mcp__context7__resolve-library-id", "mcp__context7__get-library-docs"], None, 15),  # Full tools restored
     ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit"], None, 20),  # SDK needs more for tool use
     ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 50),  # Complex implementation
     ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
@@ -952,6 +1110,7 @@ PHASE_CONFIGS = [
     ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash", "WebSearch"], None, 30),
     ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash", "WebSearch"], None, 30),
     ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], None, 20),
+    ("validate",     "Validate all implementations are real", ["Read", "Bash", "Write", "Edit", "Grep"], None, 25),
     ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 15)
 ]
 

@@ -135,6 +135,7 @@ class MilestoneDecomposer:
             ("test", "Fix all failing unit tests"),
             ("integration", "Fix all integration test failures"),
             ("e2e", "Ensure main.py runs successfully for this milestone's features"),
+            ("validate", "Validate all implementations are real (no mocks)"),
             ("commit", f"Commit milestone {milestone.number}: {milestone.name}")
         ]
         
