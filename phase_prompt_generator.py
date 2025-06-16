@@ -91,14 +91,24 @@ class PhasePromptGenerator:
         prompts = {
             "research": f"""Research requirements for: {milestone.name}
 
-Quickly check if functionality exists:
-1. Look for existing implementation
-2. If already complete, document that fact
-3. If not, identify what needs to be built
+STEP 1: Check existing code
+- What files exist in the project?
+- What's already implemented?
 
+STEP 2: Quick research (1-2 searches max)
+- Search for: "FastAPI CRUD async SQLAlchemy 2.0 2024"
+- Focus on finding working code examples
+
+STEP 3: Write concise findings
 Create file: .cc_automator/milestones/milestone_{milestone.number}/research.md
 
-Keep it brief - this should take < 30 seconds.""",
+Include:
+1. What exists in project
+2. Key libraries needed (with versions)
+3. One good code example/pattern
+4. Testing approach
+
+Keep it brief and focused - this is just research, not implementation.""",
 
             "planning": f"""
 {milestone_context}

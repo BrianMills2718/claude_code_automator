@@ -121,9 +121,14 @@ The `_validate_phase_outputs()` method enforces these requirements.
 **Status**: FIXED ✅
 **Solution**: Automatic cleanup of milestone directories prevents writing to existing files
 
-### Issue: Async cleanup errors after phase completion
+### Issue: Async TaskGroup errors during SDK execution
 **Status**: FIXED ✅
-**Solution**: Ignore TaskGroup errors if phase already completed successfully
+**Solution**: Enhanced error handling at multiple levels:
+- Better TaskGroup error detection and recovery in `_execute_with_sdk`
+- Check if work was done before marking phase as failed
+- Added `_check_phase_outputs_exist()` to verify outputs
+- Allow validation to determine final success even with async errors
+- Option to disable MCP with `DISABLE_MCP=true` for debugging
 
 ### Issue: Phase turn limits too low for SDK
 **Status**: FIXED ✅
