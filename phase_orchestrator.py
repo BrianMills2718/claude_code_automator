@@ -878,8 +878,8 @@ Write to it: PHASE_COMPLETE"""
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write"], None, 30),  # SDK uses more turns
-    ("planning",     "Create detailed implementation plan", ["Read", "Write"], None, 20),  # SDK needs more for tool use
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit"], None, 30),  # SDK uses more turns
+    ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit"], None, 20),  # SDK needs more for tool use
     ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 50),  # Complex implementation
     ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
     ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 20),

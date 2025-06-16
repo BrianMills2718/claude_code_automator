@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# CC_AUTOMATOR4: SDK Integration Complete ✅
+# CC_AUTOMATOR4: SDK Integration Complete with Bug Fix ✅
 
-## Current State - SDK Migration COMPLETE
+## Current State - Context Bug FIXED!
 
-**IMPORTANT**: The migration from Claude Code CLI to Claude Code SDK is now complete and working! The context preservation bug that caused "write file → error → retry" loops is fixed.
+**IMPORTANT**: The SDK integration is complete and the root cause of the "write file → error → retry" loop has been identified and fixed!
 
 ### Migration Status
 - [x] Phase 1: Core SDK integration in phase_orchestrator.py ✅
@@ -14,13 +14,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Phase 3: Remove completion markers (cosmetic, low priority)
 - [x] Phase 4: Session management working ✅
 - [x] Phase 5: Evidence-based validation enforced ✅
-- [ ] Phase 6: Delete old CLI code (can keep as fallback)
+- [x] Phase 6: Bug fix - Auto-cleanup milestone directories ✅
 
-### Key Findings
-1. **No API Key Required** - Claude Code SDK works with Claude Max subscription
-2. **Context Bug Fixed** - SDK maintains conversation history between attempts
-3. **Validation Active** - Each phase output is independently verified
-4. **Cost Tracking** - Accurate per-phase cost information
+### Root Cause & Fix
+**THE BUG**: When milestone files exist from previous runs, Claude tries to Write to them, gets "File has not been read yet" error, and retries infinitely.
+
+**THE FIX**: Automatically clean up milestone directories when starting fresh (not resuming). This ensures Claude always writes to new files.
+
+```python
+# In orchestrator.py line 269
+if self.current_phase_idx == 0:  # Starting fresh
+    milestone_dir = self.project_dir / ".cc_automator" / "milestones" / f"milestone_{milestone.number}"
+    if milestone_dir.exists():
+        shutil.rmtree(milestone_dir)
+```
 
 ## High-Level Architecture
 
@@ -63,25 +70,15 @@ async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
 
 ```
 For each milestone:
-  1. Research    → Analyze requirements 
-  2. Planning    → Create implementation plan (gets smart context from research)
-  3. Implement   → Build the solution (gets plan context)
+  1. Research    → Analyze requirements (creates research.md)
+  2. Planning    → Create implementation plan (creates plan.md)
+  3. Implement   → Build the solution (creates/modifies code files)
   4. Lint        → Fix F-errors only
   5. Typecheck   → Add type hints
   6. Test        → Create/fix unit tests
   7. Integration → Test component interactions
   8. E2E         → Verify main.py works (NO MOCKING)
   9. Commit      → Create git commit
-```
-
-### Smart Context Management
-
-Instead of passing entire outputs between phases:
-```python
-# Extract only relevant information
-research_output = get_phase_output("research")
-planning_context = extract_key_findings(research_output)
-# Only pass: existing files found, missing functionality, key decisions
 ```
 
 ## Usage
@@ -96,9 +93,8 @@ python cli.py --project /path/to/project --resume
 # Run specific milestone only
 python cli.py --project /path/to/project --milestone 2
 
-# Force old CLI mode (if needed)
-export USE_CLAUDE_SDK=false
-python cli.py --project /path/to/project
+# Verbose mode to see details
+python cli.py --project /path/to/project --verbose
 ```
 
 ## Critical Validation Requirements
@@ -119,64 +115,57 @@ Every phase MUST provide evidence and pass independent validation:
 
 The `_validate_phase_outputs()` method enforces these requirements.
 
-## Development Guidelines
-
-1. **Type hints** for all new functions
-2. **Test each phase** in isolation
-3. **Preserve validation logic** - this is our key differentiator
-4. **Document failures** - log why validation failed
-5. **Keep evidence** - save all phase outputs
-
 ## Known Issues & Solutions
 
 ### Issue: "File has not been read yet" errors
 **Status**: FIXED ✅
-**Solution**: SDK maintains conversation context between attempts
+**Solution**: Automatic cleanup of milestone directories prevents writing to existing files
 
-### Issue: Completion markers in prompts
-**Status**: Cosmetic issue only
-**Solution**: SDK ignores these markers. Can be removed later.
+### Issue: Async cleanup errors after phase completion
+**Status**: FIXED ✅
+**Solution**: Ignore TaskGroup errors if phase already completed successfully
 
-### Issue: Validation too strict
-**Status**: By design
-**Solution**: Adjust validation thresholds if needed, but never disable
+### Issue: Phase turn limits too low for SDK
+**Status**: FIXED ✅
+**Solution**: Increased limits (research: 30, planning: 20, implement: 50)
+
+## Next Steps for Further Improvement
+
+1. **Add Edit tool to allowed_tools** for phases that might modify existing files
+2. **Update prompts** to hint about checking file existence
+3. **Consider persistent context** between phases for better continuity
+4. **Remove completion markers** from prompts (cosmetic improvement)
 
 ## Testing
 
 ```bash
-# Test basic SDK functionality
-python test_sdk_simple.py
-
-# Test with real project
+# Test with example project
 cd test_example/
 python ../cli.py --project . --verbose
 
-# Check logs for context preservation
-cat .cc_automator/logs/research_*.log
+# Check logs for any errors
+cat .cc_automator/logs/*.log | grep "error"
+
+# Verify milestone files created
+ls -la .cc_automator/milestones/milestone_1/
 ```
 
-## Key Benefits of SDK Integration
+## Key Benefits of Current Implementation
 
-1. **Context Preservation** ✅ - No more infinite retry loops
-2. **Better Performance** ✅ - No subprocess overhead  
-3. **Accurate Costs** ✅ - Per-phase cost tracking
+1. **Context Preservation** ✅ - SDK maintains conversation history
+2. **No Infinite Loops** ✅ - Cleanup prevents write errors
+3. **Accurate Costs** ✅ - Per-phase cost tracking  
 4. **Session Management** ✅ - Resume/continue support
 5. **No API Key Required** ✅ - Uses Claude Max subscription
+6. **Validation Enforcement** ✅ - Catches false success claims
 
 ## Important Notes
 
-- SDK mode is now default (USE_CLAUDE_SDK=true)
-- Validation may catch more failures - this is good!
+- SDK mode is default (USE_CLAUDE_SDK=true)
+- Milestone directories cleaned on fresh starts
+- Validation may catch failures - this is good!
 - Each phase has specific output requirements
-- Logs are saved in .cc_automator/logs/
-- Sessions can be resumed using --resume
-
-## Files Modified for SDK
-
-Key files updated:
-1. `phase_orchestrator.py` - Core SDK integration ✅
-2. `orchestrator.py` - Basic async support ✅
-3. Validation added to ensure outputs meet requirements ✅
+- Logs saved in .cc_automator/logs/
 
 ## For Claude Code Agents
 
@@ -184,5 +173,18 @@ When working on this codebase:
 1. **Always validate outputs** - Don't trust claims, verify with subprocess
 2. **Create required files** - Each phase has specific file requirements
 3. **Show evidence** - Include command outputs that prove success
-4. **Handle errors gracefully** - Read files before writing
+4. **Handle existing files** - Check if files exist before writing
 5. **Use absolute paths** - Avoid relative path issues
+6. **Remember context** - Previous phases create files you might need
+
+## File Write/Edit Guidelines
+
+**IMPORTANT**: Claude Code has a safety feature:
+- **Write tool**: Only for NEW files (or after reading existing ones)
+- **Edit tool**: For modifying EXISTING files
+- If you get "File has not been read yet", either:
+  1. Read the file first, then Write
+  2. Use Edit instead of Write
+  3. Check if the file should be deleted first
+
+This prevents accidental data loss but can cause confusion if not understood.
