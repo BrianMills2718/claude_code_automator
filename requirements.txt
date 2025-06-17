@@ -1,0 +1,11 @@
+# Core dependencies
+anyio>=4.0.0
+claude-code-sdk>=0.0.10
+
+# Testing and validation
+pytest>=7.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Progress and monitoring
+colorama>=0.4.6

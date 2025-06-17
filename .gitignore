@@ -7,15 +7,18 @@ __pycache__/
 venv/
 env/
 ENV/
+.pytest_cache/
 
 # CC_AUTOMATOR generated files
 .cc_automator/
-*/cc_automator/
+*/.cc_automator/
 
-# Test outputs
+# Test outputs and development files  
 test_output/
 test_*.txt
 *.log
+test_*.py
+test_*/
 
 # IDE
 .vscode/
@@ -27,7 +30,5 @@ test_*.txt
 .DS_Store
 Thumbs.db
 
-# Project specific
-test_calculator_project/.cc_automator/
-test_calculator_project/test*.txt
-test_calculator_project/*.log
+# Claude specific
+.claude/

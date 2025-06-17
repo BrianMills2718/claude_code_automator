@@ -138,28 +138,37 @@ class PhaseOrchestrator:
         use_sdk = os.environ.get('USE_CLAUDE_SDK', 'true').lower() == 'true'
         
         if use_sdk:
-            # Use SDK for all phases
+            # Track SDK failure count for this phase
+            failure_count = getattr(phase, '_sdk_failure_count', 0)
+            
+            # Use SDK for all phases, with fallback to CLI after 2 failures
             try:
                 return anyio.run(self._execute_with_sdk, phase)
             except Exception as e:
-                # Handle common async errors
                 error_str = str(e)
+                failure_count += 1
+                phase._sdk_failure_count = failure_count
+                
                 if "TaskGroup" in error_str and "unhandled errors" in error_str:
                     # This is an async cleanup issue, check if work was done
                     if phase.status == PhaseStatus.COMPLETED:
                         return self._phase_to_dict(phase)
                     elif phase.status == PhaseStatus.RUNNING:
                         # Phase was still running, but we might have done work
-                        print(f"⚠️  Async error during {phase.name}, checking for partial completion...")
+                        print(f"⚠️  TaskGroup error during {phase.name}, checking for partial completion...")
                         # Check if any output files were created
                         if self._check_phase_outputs_exist(phase):
                             print(f"  Found output files, marking as completed for validation")
                             phase.status = PhaseStatus.COMPLETED
                             return self._phase_to_dict(phase)
-                        else:
-                            phase.status = PhaseStatus.FAILED
-                            phase.error = f"Async execution error: {error_str}"
-                            return self._phase_to_dict(phase)
+                    
+                    # TaskGroup errors are known SDK bugs - fallback immediately on first occurrence
+                    print(f"💥 TaskGroup error detected in {phase.name}, switching to CLI fallback immediately...")
+                    # Reset phase status for CLI retry
+                    phase.status = PhaseStatus.PENDING
+                    phase.error = None
+                    return self._execute_cli_fallback(phase)
+                
                 # If the phase already completed, don't fail on cleanup errors
                 if phase.status == PhaseStatus.COMPLETED:
                     return self._phase_to_dict(phase)
@@ -171,6 +180,86 @@ class PhaseOrchestrator:
             else:
                 # Use async execution for complex phases
                 return self._execute_async(phase)
+    
+    def _execute_cli_fallback(self, phase: Phase) -> Dict[str, Any]:
+        """CLI fallback when SDK TaskGroup errors occur repeatedly."""
+        print(f"🔄 Using CLI fallback for {phase.name} phase...")
+        
+        # Build simplified prompt without complex formatting
+        fallback_prompt = f"""PHASE: {phase.name.upper()}
+
+Task: {phase.description}
+
+Working directory: {self.working_dir.name}
+
+Instructions:
+- Complete the {phase.name} phase requirements
+- Create any required output files  
+- Use your standard tools effectively
+- Don't overthink it - just get the job done
+
+IMPORTANT: Focus on completing the task successfully."""
+        
+        # Use direct CLI execution with simpler options
+        cmd = [
+            "claude", "-p", fallback_prompt,
+            "--output-format", "json",
+            "--max-turns", str(min(phase.max_turns, 20)),  # Limit turns to reduce complexity
+            "--dangerously-skip-permissions"
+        ]
+        
+        # Only include basic tools to reduce complexity
+        basic_tools = ["Read", "Write", "Edit", "Bash"]
+        if phase.allowed_tools:
+            # Use intersection of allowed tools and basic tools
+            safe_tools = [t for t in phase.allowed_tools if t in basic_tools]
+            if safe_tools:
+                cmd.extend(["--allowedTools", ",".join(safe_tools)])
+        
+        try:
+            print(f"  Running CLI command with {len(cmd)} args...")
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=min(phase.timeout_seconds, 300),  # Max 5 minutes for fallback
+                cwd=str(self.working_dir)
+            )
+            
+            if result.returncode == 0:
+                print(f"✅ CLI fallback succeeded for {phase.name}")
+                phase.status = PhaseStatus.COMPLETED
+                # Try to parse JSON output for metadata
+                try:
+                    result_data = json.loads(result.stdout)
+                    phase.session_id = result_data.get("session_id", f"cli-fallback-{phase.name}")
+                    phase.cost_usd = result_data.get("cost_usd", 0.0)
+                    phase.duration_ms = result_data.get("duration_ms", 0)
+                except json.JSONDecodeError:
+                    phase.session_id = f"cli-fallback-{phase.name}"
+                    phase.cost_usd = 0.0
+                    phase.duration_ms = 0
+            else:
+                print(f"❌ CLI fallback failed for {phase.name}: {result.stderr}")
+                phase.status = PhaseStatus.FAILED
+                phase.error = f"CLI fallback failed: {result.stderr}"
+                
+        except subprocess.TimeoutExpired:
+            print(f"⏰ CLI fallback timed out for {phase.name}")
+            phase.status = PhaseStatus.TIMEOUT
+            phase.error = f"CLI fallback timed out after {min(phase.timeout_seconds, 300)} seconds"
+        except Exception as e:
+            print(f"💥 CLI fallback error for {phase.name}: {e}")
+            phase.status = PhaseStatus.FAILED
+            phase.error = f"CLI fallback error: {str(e)}"
+            
+        finally:
+            phase.end_time = datetime.now()
+            self._save_checkpoint(phase)
+            self._save_milestone_evidence(phase)
+            self._print_phase_summary(phase)
+            
+        return self._phase_to_dict(phase)
     
     def _execute_direct(self, phase: Phase) -> Dict[str, Any]:
         """Direct execution for simple phases"""
@@ -438,8 +527,8 @@ Write to it: PHASE_COMPLETE"""
     async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase using Claude Code SDK with full conversation preservation"""
         
-        # Check if we should use sub-phases
-        use_subphases = os.environ.get('USE_SUBPHASES', 'true').lower() == 'true'
+        # Check if we should use sub-phases (disable by default to reduce TaskGroup errors)
+        use_subphases = os.environ.get('USE_SUBPHASES', 'false').lower() == 'true'
         if use_subphases and phase.name in ['research', 'planning', 'implement']:
             return await self._execute_with_subphases(phase)
         
@@ -641,45 +730,11 @@ Write to it: PHASE_COMPLETE"""
                 if self.verbose:
                     print(f"  (Ignoring async cleanup error: {str(e)[:50]}...)")
             else:
-                # Special handling for TaskGroup errors which often occur due to async cleanup
+                # Special handling for TaskGroup errors - these are known SDK bugs, re-raise for CLI fallback
                 if "TaskGroup" in str(e) and "unhandled errors" in str(e):
-                    # TaskGroup errors often happen with multiple WebSearch queries
-                    print(f"⚠️  TaskGroup error in phase {phase.name}, attempting Claude recovery...")
-                    
-                    # For test phases, verify tests actually pass
-                    if phase.name in ["test", "integration"]:
-                        test_dir = "tests/unit" if phase.name == "test" else "tests/integration"
-                        result = subprocess.run(
-                            ["pytest", test_dir, "-xvs"],
-                            capture_output=True,
-                            text=True,
-                            cwd=str(self.working_dir)
-                        )
-                        if result.returncode == 0:
-                            print(f"✓ {phase.name} tests pass despite TaskGroup error")
-                            phase.status = PhaseStatus.COMPLETED
-                            phase.error = None
-                        else:
-                            print(f"✗ {phase.name} tests failed, attempting recovery")
-                            recovery_result = await self._attempt_phase_recovery(phase, str(e))
-                            if recovery_result:
-                                phase.status = PhaseStatus.COMPLETED
-                                phase.error = None
-                            else:
-                                phase.status = PhaseStatus.FAILED
-                                phase.error = f"Tests failed and recovery unsuccessful"
-                    else:
-                        # For other phases, let Claude attempt recovery
-                        print(f"  Attempting intelligent recovery for {phase.name} phase...")
-                        recovery_result = await self._attempt_phase_recovery(phase, str(e))
-                        if recovery_result:
-                            print(f"✓ Claude successfully recovered {phase.name} phase")
-                            phase.status = PhaseStatus.COMPLETED
-                            phase.error = None
-                        else:
-                            print(f"✗ Recovery unsuccessful for {phase.name} phase")
-                            phase.status = PhaseStatus.FAILED
-                            phase.error = f"TaskGroup error and recovery failed: {str(e)}"
+                    print(f"⚠️  TaskGroup error in phase {phase.name}, will trigger CLI fallback...")
+                    # Re-raise the exception to trigger CLI fallback in execute_phase
+                    raise
                 else:
                     phase.status = PhaseStatus.FAILED
                     phase.error = f"SDK error: {str(e)}"
@@ -1157,7 +1212,8 @@ Complete the phase now."""
     
     def _check_phase_outputs_exist(self, phase: Phase) -> bool:
         """Quick check if phase created expected output files"""
-        milestone_dir = self.working_dir / ".cc_automator" / "milestones" / f"milestone_{phase.milestone_number}"
+        milestone_num = getattr(self, 'current_milestone', 1)
+        milestone_dir = self.working_dir / ".cc_automator" / "milestones" / f"milestone_{milestone_num}"
         
         # Check for phase-specific output files
         if phase.name == "research":

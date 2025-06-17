@@ -6,6 +6,55 @@
         "-y",
         "@upstash/context7-mcp@latest"
       ]
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-filesystem"],
+      "description": "File system operations - read, write, list directories"
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["@modelcontextprotocol/server-brave-search"],
+      "description": "Web search using Brave Search API (requires API key)"
     }
+  },
+  "phases": {
+    "research": {
+      "preferred_mcps": ["brave-search", "context7"],
+      "fallback_tools": ["WebSearch", "WebFetch"]
+    },
+    "planning": {
+      "preferred_mcps": ["filesystem", "context7"],
+      "fallback_tools": ["Read"]
+    },
+    "implement": {
+      "preferred_mcps": ["filesystem"],
+      "fallback_tools": ["Read", "Write", "Edit", "MultiEdit"]
+    },
+    "test": {
+      "preferred_mcps": ["filesystem"],
+      "fallback_tools": ["Bash"]
+    },
+    "integration": {
+      "preferred_mcps": ["filesystem"],
+      "fallback_tools": ["Bash"]
+    }
+  },
+  "installation": {
+    "notes": [
+      "Run 'npm install -g <package>' for each MCP server",
+      "Some servers may require additional setup or API keys",
+      "Check individual server documentation for requirements"
+    ],
+    "install_commands": [
+      "npm install -g pskill9/web-search",
+      "npm install -g @exa-ai/exa-mcp-server", 
+      "npm install -g @anthropic/ref",
+      "npm install -g @anthropic/github",
+      "npm install -g juehang/vscode-mcp-server",
+      "npm install -g wonderwhy-er/DesktopCommanderMCP",
+      "npm install -g pydantic/pydantic-ai/mcp-run-python",
+      "npm install -g @anthropic/firecrawl"
+    ]
   }
 }
