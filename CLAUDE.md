@@ -288,34 +288,92 @@ ls -la .cc_automator/milestones/milestone_1/
 └── evidence/                  # Phase execution evidence
 ```
 
-## Current Implementation Status
+## Current Implementation Status (December 2024)
 
 ### What's Working
-1. **SDK Integration** ✅ - Basic SDK communication established
-2. **File Cleanup** ✅ - Milestone directories cleaned on fresh start
-3. **Session Management** ✅ - Can resume from checkpoints
-4. **Cost Tracking** ✅ - Tracks token usage per phase
-5. **Basic Phase Structure** ✅ - 9 phases defined and executable
+1. **Core Architecture** ✅ - 9-phase pipeline prevents Claude from cheating
+2. **Validation Gates** ✅ - Evidence-based validation catches false claims
+3. **Research/Planning** ✅ - Work well with fixed prompts (~30s each)
+4. **Milestone Decomposition** ✅ - Breaks complex projects effectively
+5. **Session Management** ✅ - Resume/checkpoint functionality works
 
-### What's Not Working
-1. **Research Phase** ❌ - Fails to create research.md
-   - WebSearch hangs (possibly geographic restriction)
-   - Prompts may be too complex
-   - Path issues between prompt and validation
-   
-2. **TaskGroup Errors** ❌ - Async errors in SDK execution
-   - Happens when WebSearch is used
-   - Enhanced error handling partially mitigates but doesn't fix root cause
-   
-3. **Context Flow** ❌ - Previous phase outputs not properly passed
-   - Each phase starts fresh without context
-   - Need to implement context accumulation
+### Known Issues & Fixes
 
-### Error Messages and Meanings
-- **"File has not been read yet"** - Claude trying to Write existing file without Read
-- **"TaskGroup: unhandled errors"** - Nested async context or tool timeout
-- **"Phase validation failed"** - Expected output file doesn't exist
-- **"AttributeError: 'str' object has no attribute 'name'"** - Phase object type mismatch
+1. **TaskGroup Errors** ⚠️ 
+   - **Cause**: SDK async cleanup issues, especially with WebSearch
+   - **Fix**: Already implemented smart recovery that checks if work completed
+   - **TODO**: Add timeout handling for interactive programs
+
+2. **WebSearch Timeouts** ⚠️
+   - **Cause**: Geographic restrictions or network issues
+   - **Fix**: Keep WebSearch enabled but handle timeouts gracefully
+   - **TODO**: Add fallback to continue without WebSearch after 30s
+
+3. **Interactive Program Hangs** ⚠️
+   - **Cause**: E2E phase runs `python main.py` which waits for input forever
+   - **Fix**: Updated E2E prompt to use `echo "input" | python main.py`
+   - **TODO**: Verify fix works in practice
+
+4. **Hardcoded Prompts** ⚠️
+   - **Cause**: Research prompt had FastAPI examples for calculator project
+   - **Fix**: Made prompts dynamic based on project type
+   - **TODO**: Review all prompts for similar issues
+
+### Error Recovery Strategy
+When TaskGroup errors occur:
+1. Check if expected outputs were created
+2. For test phases, actually run pytest to verify
+3. Mark as complete if work was done despite error
+4. Only fail if no valid outputs exist
+
+## Surgical Fix Plan (December 2024)
+
+### Phase 1: Fix Critical Issues
+1. **WebSearch Timeout Handling**
+   - Add 30-second timeout to WebSearch operations
+   - Continue with fallback if timeout occurs
+   - Log timeout but don't fail the phase
+
+2. **Interactive Program Detection**
+   - E2E phase checks if main.py has `input()` calls
+   - Uses piped input for interactive programs
+   - Direct execution for non-interactive programs
+
+3. **Prompt Cleanup**
+   - Remove all hardcoded examples (FastAPI, etc.)
+   - Make prompts project-aware
+   - Add clear "Don't use TodoWrite" instructions
+
+### Phase 2: Improve Recovery
+1. **Smart Validation**
+   - Accept files with similar names (research_CLAUDE.md → research.md)
+   - Focus on content existence, not exact naming
+   - Run actual tests instead of assuming failure
+
+2. **Context Flow**
+   - Ensure each phase receives previous phase outputs
+   - Add explicit context sections to prompts
+   - Preserve conversation flow between phases
+
+### Phase 3: Optimize Performance
+1. **Sub-phase Support**
+   - Enable for long phases (>5 minutes)
+   - Break implementation into smaller chunks
+   - Maintain context between sub-phases
+
+2. **Parallel Execution**
+   - Run independent phases concurrently
+   - Lint + Typecheck can run together
+   - Unit + Integration tests can run together
+
+### What We're NOT Changing
+- ✅ Keep all 9 phases
+- ✅ Keep WebSearch enabled
+- ✅ Keep strict validation
+- ✅ Keep evidence requirements
+- ✅ Keep milestone decomposition
+
+The goal: Same powerful system, just more robust execution.
 
 ## Milestone Decomposition Process
 

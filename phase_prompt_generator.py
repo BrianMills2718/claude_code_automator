@@ -94,48 +94,47 @@ class PhasePromptGenerator:
         prompts = {
             "research": f"""Research requirements for: {milestone.name}
 
-1. Check what exists in main.py and requirements.txt
+**IMPORTANT: Do NOT use TodoWrite tool - just research and write directly.**
 
-2. Write your research findings to: .cc_automator/milestones/milestone_{milestone.number}/research.md
+1. Check what exists in main.py and requirements.txt
+2. Review the project structure and requirements in CLAUDE.md
+3. Write your research findings to: .cc_automator/milestones/milestone_{milestone.number}/research.md
 
 The research.md file must contain:
 # Research Findings for {milestone.name}
 
 ## What Exists
-- Summary of main.py 
+- Summary of main.py (if it exists)
 - Current requirements.txt status
+- Current project structure
 
-## Libraries Needed
-- fastapi>=0.104.0
-- sqlalchemy[asyncio]>=2.0.0
-- pydantic>=2.0.0
-- uvicorn[standard]>=0.24.0
+## Requirements Analysis
+- What functionality needs to be implemented for this milestone
+- What libraries/dependencies are needed (if any)
+- Implementation approach based on project type
 
-## Basic CRUD Pattern
-```python
-# Example async CRUD pattern
-from sqlalchemy.ext.asyncio import AsyncSession
+## Implementation Approach
+- Basic code structure needed
+- Key functions/classes to implement
+- User interface approach (CLI, web, etc.)
 
-async def create_user(db: AsyncSession, user_data: dict):
-    # Basic pattern here
-```
-
-## Testing Approach
-- pytest with async support
-- Test database with SQLite
+## Testing Strategy
+- What types of tests are needed
+- Test scenarios for this milestone
 
 RESEARCH APPROACH:
-1. First, use your existing knowledge of current library practices (you know the 2024 patterns)
-2. Only use WebSearch if you need very specific version numbers or recent API changes
-3. If WebSearch takes more than 30 seconds or fails, continue with your knowledge
-4. Focus on creating actionable research that guides implementation
-
-Your existing knowledge of FastAPI, SQLAlchemy 2.0, Pydantic v2, etc. is comprehensive and current.""",
+1. First, read CLAUDE.md to understand the project type and requirements
+2. Check existing code to see what's already implemented
+3. Use your knowledge of Python best practices for this type of project
+4. Only use WebSearch if you need very specific information about libraries
+5. Focus on creating actionable research that guides implementation""",
 
             "planning": f"""
 {milestone_context}
 
 ## Planning Phase
+
+**IMPORTANT: Do NOT use TodoWrite tool - just plan and write directly.**
 
 Based on research, create implementation plan.
 
@@ -157,19 +156,26 @@ Save to: .cc_automator/milestones/milestone_{milestone.number}/plan.md
 
 ## Implementation Phase
 
-Implement based on the plan.
+Create the implementation based on the plan.
 
-If plan says functionality is already complete:
-1. Verify with: python main.py
-2. Document in implement.md that it's already done
-3. Exit early
+**IMPORTANT: Do NOT use TodoWrite tool - just implement directly.**
 
-Otherwise:
-1. Implement required functionality
-2. Ensure main.py works
-3. Use type hints
+### Tasks:
+1. Read the plan.md file to understand requirements
+2. Create main.py with the specified functionality
+3. Create requirements.txt (usually empty for basic projects)
+4. Test that main.py runs without errors
+5. Save a brief summary to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
 
-Save summary to: .cc_automator/milestones/milestone_{milestone.number}/implement.md
+### Implementation Guidelines:
+- Follow the exact specifications in plan.md
+- Use proper type hints for all functions
+- Include error handling as specified
+- Keep code simple and readable
+- Ensure main.py is the entry point
+
+### Verification:
+After implementation, test with: python main.py
 """,
 
             "lint": """Run flake8 and fix F errors only:

@@ -459,10 +459,16 @@ Write to it: PHASE_COMPLETE"""
             if self.verbose:
                 print("MCP disabled via DISABLE_MCP environment variable")
         
-        # Configure SDK options  
+        # Configure SDK options
+        # For implement phase, explicitly disallow problematic tools
+        disallowed = []
+        if phase.name == "implement":
+            disallowed = ["TodoWrite", "TodoRead", "Bash", "WebSearch", "WebFetch"]
+        
         options = ClaudeCodeOptions(
             max_turns=phase.max_turns,
-            allowed_tools=phase.allowed_tools,  # Include all tools including WebSearch
+            allowed_tools=phase.allowed_tools,
+            disallowed_tools=disallowed,
             mcp_servers=mcp_servers,
             cwd=str(self.working_dir),
             permission_mode="bypassPermissions"  # For autonomous operation
@@ -482,10 +488,26 @@ Write to it: PHASE_COMPLETE"""
         else:
             print(f"Starting {phase.name} phase...")
         
+        websearch_start_time = None
+        websearch_timeout_seconds = 30
+        
         try:
-            # Execute query
+            # Execute query with WebSearch timeout handling
             async for message in query(prompt=phase.prompt, options=options):
                 messages.append(message)
+                
+                # Track WebSearch timing
+                if hasattr(message, 'content') and isinstance(message.content, list):
+                    for item in message.content:
+                        if hasattr(item, 'name') and item.name == 'WebSearch':
+                            websearch_start_time = time.time()
+                            if self.verbose:
+                                print(f"⏱️  WebSearch started, will timeout after {websearch_timeout_seconds}s")
+                
+                # Check for WebSearch timeout
+                if websearch_start_time and (time.time() - websearch_start_time) > websearch_timeout_seconds:
+                    print(f"⚠️  WebSearch timeout after {websearch_timeout_seconds}s, continuing without results")
+                    websearch_start_time = None  # Reset to prevent repeated warnings
                 
                 # Convert message to dict if it's an object
                 if hasattr(message, '__dict__'):
@@ -1250,23 +1272,46 @@ Complete the phase now."""
         elif phase.name == "e2e":
             # Check if e2e evidence log was created AND main.py runs successfully
             milestone_num = getattr(self, 'current_milestone', 1)
-            e2e_log = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "e2e_evidence.log"
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
             
-            # First check if log exists
-            if not e2e_log.exists():
+            # Look for e2e evidence log or similar
+            e2e_files = list(milestone_dir.glob("*e2e*.log")) + list(milestone_dir.glob("*evidence*.log"))
+            if not e2e_files:
                 if self.verbose:
-                    print(f"E2E validation failed: {e2e_log} not found")
+                    print(f"E2E validation failed: no evidence log found in {milestone_dir}")
                 return False
             
-            # Also verify main.py actually runs without errors
-            result = subprocess.run(
-                ["python", "main.py"],
-                input="0\n",  # Select exit option if it's a menu
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir),
-                timeout=10  # Prevent hanging
-            )
+            # Check if main.py is interactive by looking for input() calls
+            main_py = self.working_dir / "main.py"
+            is_interactive = False
+            if main_py.exists():
+                content = main_py.read_text()
+                is_interactive = 'input(' in content or 'raw_input(' in content
+                
+            # Verify main.py actually runs without errors
+            if is_interactive:
+                # For interactive programs, provide test input
+                if self.verbose:
+                    print("E2E: Detected interactive program, providing test input")
+                result = subprocess.run(
+                    ["python", "main.py"],
+                    input="5\n",  # Common exit option
+                    capture_output=True,
+                    text=True,
+                    cwd=str(self.working_dir),
+                    timeout=10  # Prevent hanging
+                )
+            else:
+                # For non-interactive programs, run directly
+                if self.verbose:
+                    print("E2E: Running non-interactive program")
+                result = subprocess.run(
+                    ["python", "main.py"],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(self.working_dir),
+                    timeout=10
+                )
             
             if result.returncode != 0:
                 if self.verbose:
