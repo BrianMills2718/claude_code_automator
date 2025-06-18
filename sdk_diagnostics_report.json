@@ -1,0 +1,20 @@
+{
+  "test_prompt": "Create diagnostics.txt with 'Testing SDK diagnostics' content.",
+  "options": {
+    "max_turns": 3,
+    "allowed_tools": [
+      "Write",
+      "Read"
+    ]
+  },
+  "summary": {
+    "stats": {
+      "total_messages": 6,
+      "message_types": {
+        "SystemMessage": 1,
+        "AssistantMessage": 3,
+        "UserMessage": 1,
+        "ResultMessage": 1
+      },
+      "errors": 0,
+      "cost_fields_seen": 
