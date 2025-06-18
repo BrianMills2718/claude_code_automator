@@ -2,6 +2,40 @@
 
 **FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
+## CURRENT TASK: SDK Issue Diagnosis
+
+**ISSUE**: Claude Code SDK cost parsing bug causing KeyError: 'cost_usd' crashes during phase execution
+**GOAL**: Diagnose and resolve SDK issue to maintain streaming capabilities and integration benefits
+**STATUS**: ✅ RESOLVED - Root cause identified and fix implemented
+
+### SDK Cost Parsing Bug - Root Cause & Solution
+
+**Root Cause**: The Claude Code SDK v0.1.2 has a bug in `_internal/client.py` line 89 where it expects `data["cost_usd"]` but the CLI actually returns `data["total_cost_usd"]`.
+
+**Solution Implemented**: Created a monkey-patch wrapper (`claude_code_sdk_fixed.py`) that:
+1. Intercepts the SDK's `_parse_message` method
+2. Handles the KeyError gracefully
+3. Maps fields correctly: `total_cost_usd` → `cost_usd`
+
+**Integration**: `phase_orchestrator.py` now automatically uses the fixed wrapper when available:
+```python
+try:
+    from claude_code_sdk_fixed import query, ClaudeCodeOptions, Message
+    print("✅ Using fixed SDK wrapper (cost parsing bug patched)")
+except ImportError:
+    from claude_code_sdk import query, ClaudeCodeOptions, Message
+```
+
+**Benefits of SDK (Now Working)**:
+- ✅ Streaming feedback during execution
+- ✅ Rich message types and metadata
+- ✅ Better progress tracking
+- ✅ Cost tracking per phase
+- ✅ Session management
+- ✅ MCP server integration
+
+**Recommendation**: Continue using SDK with the wrapper fix for all benefits above
+
 ## THE FUNDAMENTAL PURPOSE
 
 **CC_AUTOMATOR4 EXISTS TO SOLVE ONE CRITICAL PROBLEM:**

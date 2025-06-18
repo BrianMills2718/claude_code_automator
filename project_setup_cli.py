@@ -29,6 +29,18 @@ Examples:
         help="Project directory (default: current directory)"
     )
     
+    parser.add_argument(
+        "--openai-api-key",
+        type=str,
+        help="OpenAI API key for auto-selecting OpenAI-based approaches"
+    )
+    
+    parser.add_argument(
+        "--auto-openai",
+        action="store_true",
+        help="Automatically select OpenAI-based approaches when available"
+    )
+    
     args = parser.parse_args()
     
     # Determine project directory
@@ -42,8 +54,19 @@ Examples:
     print()
     
     try:
+        # Set OpenAI API key if provided
+        if args.openai_api_key:
+            import os
+            os.environ['OPENAI_API_KEY'] = args.openai_api_key
+            print(f"🔑 OpenAI API key configured")
+            print()
+        
         # Run the discovery wizard
-        discovery = run_project_discovery(project_dir)
+        discovery = run_project_discovery(
+            project_dir, 
+            openai_api_key=args.openai_api_key,
+            auto_select_openai=args.auto_openai
+        )
         
         print("="*60)
         print("🎉 PROJECT SETUP COMPLETE!")

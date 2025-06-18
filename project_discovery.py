@@ -38,9 +38,11 @@ class ProjectDiscovery:
 class ProjectDiscoveryWizard:
     """Interactive wizard that discovers project requirements from user intent"""
     
-    def __init__(self, project_dir: Path):
+    def __init__(self, project_dir: Path, openai_api_key: str = None, auto_select_openai: bool = False):
         self.project_dir = project_dir
         self.discovery = ProjectDiscovery(user_intent="", project_type="")
+        self.openai_api_key = openai_api_key
+        self.auto_select_openai = auto_select_openai
         
     def run_discovery(self) -> ProjectDiscovery:
         """Run the complete project discovery process"""
@@ -143,6 +145,10 @@ class ProjectDiscoveryWizard:
         # Medical/Healthcare Systems
         elif any(term in user_intent for term in ['medical', 'healthcare', 'diagnosis', 'patient']):
             return self._analyze_medical_system()
+            
+        # Educational/Learning Systems
+        elif any(term in user_intent for term in ['learning', 'education', 'student', 'recommendation', 'course', 'training']):
+            return self._analyze_educational_system()
             
         # Default: Intelligent general analysis
         else:
@@ -375,6 +381,140 @@ class ProjectDiscoveryWizard:
             "reasoning": "Healthcare application for diagnosis assistance or patient management",
             "core_capabilities": [],
             "milestone_suggestions": []
+        })
+    
+    def _analyze_educational_system(self) -> str:
+        """Analyze requirements for educational/learning systems"""
+        return json.dumps({
+            "project_type": "Educational Learning System",
+            "reasoning": "Personalized learning system that adapts to student progress and provides intelligent recommendations",
+            "core_capabilities": [
+                {
+                    "name": "student_progress_tracking",
+                    "description": "Track student learning progress and performance analytics",
+                    "why_needed": "Need to understand student strengths, weaknesses, and learning patterns to make intelligent recommendations",
+                    "approaches": [
+                        {
+                            "name": "custom_analytics_db",
+                            "description": "PostgreSQL with time-series tables for progress tracking",
+                            "type": "database",
+                            "pros": ["Full control", "Custom analytics", "ACID compliance"],
+                            "cons": ["More setup", "Custom analytics logic"],
+                            "best_for": "Complex learning analytics with custom metrics",
+                            "complexity": "moderate",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "learning_analytics_platform",
+                            "description": "Specialized learning analytics service",
+                            "type": "api",
+                            "pros": ["Built-in analytics", "Educational standards", "Ready-made dashboards"],
+                            "cons": ["Vendor lock-in", "Cost per student"],
+                            "best_for": "Standard educational metrics and reporting",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        }
+                    ],
+                    "recommended": "custom_analytics_db for flexibility, learning_analytics_platform for quick start"
+                },
+                {
+                    "name": "content_recommendation_engine",
+                    "description": "AI-powered system to recommend personalized learning content",
+                    "why_needed": "Core functionality to suggest relevant learning materials based on student progress and learning style",
+                    "approaches": [
+                        {
+                            "name": "collaborative_filtering",
+                            "description": "Recommend based on similar students' success patterns",
+                            "type": "algorithm",
+                            "pros": ["Good for popular content", "User-based recommendations", "No content analysis needed"],
+                            "cons": ["Cold start problem", "Popularity bias"],
+                            "best_for": "Large student populations with similar learning paths",
+                            "complexity": "moderate",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "content_based_filtering",
+                            "description": "Recommend based on content similarity and student preferences",
+                            "type": "algorithm", 
+                            "pros": ["No cold start", "Content understanding", "Explainable recommendations"],
+                            "cons": ["Requires content analysis", "Limited discovery"],
+                            "best_for": "Diverse content with rich metadata",
+                            "complexity": "moderate",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "ml_recommendation_api",
+                            "description": "Cloud ML service for personalized recommendations",
+                            "type": "api",
+                            "pros": ["Advanced algorithms", "Scalable", "Continuous learning"],
+                            "cons": ["Cost per recommendation", "Less control"],
+                            "best_for": "Large scale with budget for ML services",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        },
+                        {
+                            "name": "openai_recommendation_engine",
+                            "description": "OpenAI GPT-4 based intelligent content recommendations",
+                            "type": "api",
+                            "pros": ["Excellent understanding", "Natural explanations", "Adaptive reasoning"],
+                            "cons": ["API cost per recommendation", "Rate limits"],
+                            "best_for": "High-quality personalized recommendations with explanations",
+                            "complexity": "simple",
+                            "cost": "medium",
+                            "api_key_needed": "OPENAI_API_KEY"
+                        }
+                    ],
+                    "recommended": "content_based_filtering for explainability, ml_recommendation_api for scale"
+                },
+                {
+                    "name": "adaptive_learning_paths",
+                    "description": "Dynamic learning sequences that adjust based on student performance",
+                    "why_needed": "Personalize the learning journey by adapting difficulty and topics based on individual progress",
+                    "approaches": [
+                        {
+                            "name": "rule_based_adaptation",
+                            "description": "Predefined rules for learning path adjustments",
+                            "type": "algorithm",
+                            "pros": ["Predictable", "Explainable", "Easy to debug"],
+                            "cons": ["Limited flexibility", "Manual rule creation"],
+                            "best_for": "Well-defined curriculum with clear prerequisites",
+                            "complexity": "simple",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "knowledge_graph_pathfinding",
+                            "description": "Graph-based learning paths using Neo4j with concept relationships",
+                            "type": "service",
+                            "pros": ["Complex relationships", "Dynamic pathfinding", "Prerequisite modeling"],
+                            "cons": ["Setup complexity", "Graph maintenance"],
+                            "best_for": "Complex subjects with many concept dependencies",
+                            "complexity": "complex",
+                            "cost": "low"
+                        }
+                    ],
+                    "recommended": "rule_based_adaptation for MVP, knowledge_graph_pathfinding for advanced personalization"
+                }
+            ],
+            "milestone_suggestions": [
+                {
+                    "name": "Student Progress Foundation",
+                    "description": "Build core student tracking and basic analytics",
+                    "why_this_order": "Need to collect student data before building recommendation algorithms",
+                    "success_criteria": "System tracks student interactions and basic progress metrics"
+                },
+                {
+                    "name": "Content Recommendation Engine", 
+                    "description": "Implement personalized content recommendation system",
+                    "why_this_order": "Core recommendation functionality built on student data foundation",
+                    "success_criteria": "System provides personalized content recommendations based on student progress"
+                },
+                {
+                    "name": "Adaptive Learning Interface",
+                    "description": "Complete learning interface with adaptive paths and analytics dashboard",
+                    "why_this_order": "Full learning experience with teacher/admin dashboards for insights",
+                    "success_criteria": "Students get adaptive learning paths and educators can view detailed analytics"
+                }
+            ]
         })
     
     def _analyze_general_system(self) -> str:
@@ -652,31 +792,60 @@ class ProjectDiscoveryWizard:
                 print(f"      Best for: {approach['best_for']}")
                 print()
             
-            # Get user choice
-            while True:
-                try:
+            # Get user choice (or auto-select OpenAI if configured)
+            if self.auto_select_openai:
+                # Auto-select OpenAI/LLM-based approach if available
+                openai_choice = next(
+                    (j for j, approach in enumerate(req.approaches, 1) 
+                     if any(term in approach["name"].lower() for term in ["openai", "llm", "gpt", "ai", "claude"])
+                     or any(term in approach["description"].lower() for term in ["openai", "llm", "gpt", "ai api"])), 
+                    None
+                )
+                
+                if openai_choice:
+                    choice = openai_choice
+                    selected = req.approaches[choice - 1]
+                    req.user_choice = selected["name"]
+                    print(f"🤖 Auto-selected OpenAI approach: {selected['description']}")
+                    if self.openai_api_key:
+                        print(f"🔑 Using provided OpenAI API key")
+                    print()
+                else:
+                    # Fall back to recommended approach
                     default_choice = next(
                         (j for j, approach in enumerate(req.approaches, 1) 
                          if approach["name"] == req.recommended_approach), 1
                     )
-                    
-                    choice = input(f"Choose approach [1-{len(req.approaches)}] (default: {default_choice}): ").strip()
-                    
-                    if not choice:
-                        choice = default_choice
-                    else:
-                        choice = int(choice)
-                    
-                    if 1 <= choice <= len(req.approaches):
-                        selected = req.approaches[choice - 1]
-                        req.user_choice = selected["name"]
-                        print(f"✅ Selected: {selected['description']}\n")
-                        break
-                    else:
-                        print(f"Please enter a number between 1 and {len(req.approaches)}")
+                    choice = default_choice
+                    selected = req.approaches[choice - 1]
+                    req.user_choice = selected["name"]
+                    print(f"✅ Auto-selected: {selected['description']}\n")
+            else:
+                # Interactive selection
+                while True:
+                    try:
+                        default_choice = next(
+                            (j for j, approach in enumerate(req.approaches, 1) 
+                             if approach["name"] == req.recommended_approach), 1
+                        )
                         
-                except (ValueError, KeyboardInterrupt):
-                    print(f"Please enter a number between 1 and {len(req.approaches)}")
+                        choice = input(f"Choose approach [1-{len(req.approaches)}] (default: {default_choice}): ").strip()
+                        
+                        if not choice:
+                            choice = default_choice
+                        else:
+                            choice = int(choice)
+                        
+                        if 1 <= choice <= len(req.approaches):
+                            selected = req.approaches[choice - 1]
+                            req.user_choice = selected["name"]
+                            print(f"✅ Selected: {selected['description']}\n")
+                            break
+                        else:
+                            print(f"Please enter a number between 1 and {len(req.approaches)}")
+                            
+                    except (ValueError, KeyboardInterrupt):
+                        print(f"Please enter a number between 1 and {len(req.approaches)}")
                     
         print("="*60)
         print("✅ Requirements configuration complete!\n")
@@ -969,9 +1138,9 @@ class ProjectDiscoveryWizard:
             return " ".join(key_words) + " System"
 
 
-def run_project_discovery(project_dir: Path) -> ProjectDiscovery:
+def run_project_discovery(project_dir: Path, openai_api_key: str = None, auto_select_openai: bool = False) -> ProjectDiscovery:
     """Main entry point for project discovery"""
-    wizard = ProjectDiscoveryWizard(project_dir)
+    wizard = ProjectDiscoveryWizard(project_dir, openai_api_key=openai_api_key, auto_select_openai=auto_select_openai)
     return wizard.run_discovery()
 
 

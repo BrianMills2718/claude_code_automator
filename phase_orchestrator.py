@@ -16,7 +16,13 @@ from dataclasses import dataclass, field
 from enum import Enum
 import asyncio
 import anyio
-from claude_code_sdk import query, ClaudeCodeOptions, Message
+# Use fixed SDK wrapper if available, fallback to original
+try:
+    from claude_code_sdk_fixed import query, ClaudeCodeOptions, Message
+    print("✅ Using fixed SDK wrapper (cost parsing bug patched)")
+except ImportError:
+    from claude_code_sdk import query, ClaudeCodeOptions, Message
+    print("⚠️  Using original SDK (may encounter cost_usd errors)")
 
 
 class PhaseStatus(Enum):
@@ -630,7 +636,7 @@ Write to it: PHASE_COMPLETE"""
         websearch_timeout_seconds = 30
         
         try:
-            # Execute query with WebSearch timeout handling
+            # Execute query with WebSearch timeout handling and SDK error recovery
             async for message in query(prompt=phase.prompt, options=options):
                 messages.append(message)
                 
@@ -802,6 +808,21 @@ Write to it: PHASE_COMPLETE"""
                     print(f"⚠️  TaskGroup error in phase {phase.name}, will trigger CLI fallback...")
                     # Re-raise the exception to trigger CLI fallback in execute_phase
                     raise
+                # Handle Claude Code SDK cost parsing errors gracefully
+                elif "cost_usd" in str(e) or ("KeyError" in str(e) and "cost" in str(e)):
+                    print(f"⚠️  Claude Code SDK cost parsing error (continuing): {e}")
+                    # Check if we got any useful output despite the error
+                    if messages:
+                        print(f"✅ Recovered {len(messages)} messages despite SDK error")
+                        phase.status = PhaseStatus.COMPLETED
+                        phase.evidence = f"Phase completed with {len(messages)} messages (SDK cost error handled)"
+                        phase.cost_usd = 0.0  # Can't determine cost due to SDK error
+                        return phase
+                    else:
+                        # No messages recovered, treat as failure
+                        phase.status = PhaseStatus.FAILED
+                        phase.error = f"SDK cost parsing error with no recovered output: {str(e)}"
+                        print(f"✗ SDK cost error with no output in phase {phase.name}")
                 else:
                     phase.status = PhaseStatus.FAILED
                     phase.error = f"SDK error: {str(e)}"

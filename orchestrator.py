@@ -323,13 +323,18 @@ class CCAutomatorOrchestrator:
             
             # Add specific dependency based on type
             if dep.get("type") == "api" and "api_key_needed" in dep:
-                dependency.name = dep["api_key_needed"]
+                # Map OpenAI-related keys to standard OPENAI_API_KEY
+                api_key_name = dep["api_key_needed"]
+                if "openai" in api_key_name.lower():
+                    api_key_name = "OPENAI_API_KEY"
+                
+                dependency.name = api_key_name
                 dependency.type = "api_key"
                 dependency.setup_instructions = [
-                    f'export {dep["api_key_needed"]}="your-api-key-here"',
+                    f'export {api_key_name}="your-api-key-here"',
                     f'# {dep["description"]}'
                 ]
-                dependency.validation_command = f'test -n "${dep["api_key_needed"]}"'
+                dependency.validation_command = f'test -n "${api_key_name}"'
                 analysis.api_keys.append(dependency)
                 
             elif dep.get("type") == "service" and "docker_service" in dep:
