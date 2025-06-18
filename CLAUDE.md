@@ -2,11 +2,23 @@
 
 **FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
-## CURRENT TASK: SDK Issue Diagnosis
+## CURRENT TASK: Turn Limit Configuration Fix
 
-**ISSUE**: Claude Code SDK cost parsing bug causing KeyError: 'cost_usd' crashes during phase execution
-**GOAL**: Diagnose and resolve SDK issue to maintain streaming capabilities and integration benefits
-**STATUS**: ✅ RESOLVED - Root cause identified and fix implemented
+**ISSUE**: Planning phase fails with FORCE_SONNET=true due to 20-turn limit being too low
+**GOAL**: Fix turn limits to allow Sonnet to complete complex planning phases
+**STATUS**: 🔄 IN PROGRESS - Root cause identified, implementing fix
+
+### Turn Limit Issue - Root Cause & Solution
+
+**Root Cause**: Planning phase with Sonnet hits 20-turn limit when creating comprehensive files:
+- Each tool call (Write/Read/Edit/Bash) counts as separate turn
+- Complex planning requires 40-50 operations: create files, test, fix linting, iterate
+- 43 tool calls in 109 seconds = highly productive work, just needs more turns
+
+**Solution Strategy**:
+1. **Increase planning phase turn limit to 50** for comprehensive file operations
+2. **Differentiate limits by phase type**: mechanical vs complex phases
+3. **Preserve cost optimization**: Sonnet for planning saves 90% vs Opus
 
 ### SDK Cost Parsing Bug - Root Cause & Solution
 
@@ -186,6 +198,32 @@ def _select_model_for_phase(phase_name: str) -> Optional[str]:
         return "claude-3-5-sonnet-20241022"  # Cost-effective
     return None  # Use default (Opus)
 ```
+
+### 6. Turn Limit Configuration by Phase Type
+
+**PROBLEM**: Default 20-turn limit too low for file-intensive phases like planning.
+
+**SOLUTION**: Differentiate turn limits based on phase complexity:
+
+```python
+def get_turn_limit_for_phase(phase_name: str) -> int:
+    """Get appropriate turn limit based on phase complexity."""
+    # High file operation phases need more turns
+    high_turn_phases = ["planning", "implement", "integration"]
+    
+    if phase_name in high_turn_phases:
+        return 50  # Allow comprehensive file creation/testing
+    elif phase_name in ["lint", "typecheck"]:
+        return 30  # Moderate - file fixes but less creation
+    else:
+        return 20  # Standard for simple phases
+```
+
+**RATIONALE**:
+- Planning: Creates plan.md + implementation files + tests + setup = ~40-50 operations
+- Implement: Creates main code + modules + fixes = ~30-40 operations  
+- Lint/Typecheck: Fixes existing files = ~20-30 operations
+- Research/E2E: Primarily analysis = ~15-20 operations
 
 ### 4. File Parallel Execution (Lint/Typecheck)
 

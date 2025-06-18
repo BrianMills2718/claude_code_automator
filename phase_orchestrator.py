@@ -2210,7 +2210,7 @@ Be thorough, complete, and anticipate what downstream phases will need from your
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
     ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "mcp__cc-automator-tools__safe_websearch", "mcp__cc-automator-tools__project_context_analyzer"], None, 15),
-    ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit", "mcp__cc-automator-tools__project_context_analyzer"], None, 20),
+    ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__project_context_analyzer", "mcp__cc-automator-tools__safe_command_runner"], None, 50),
     ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit", "mcp__cc-automator-tools__safe_file_operations"], None, 50),
     ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
     ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
