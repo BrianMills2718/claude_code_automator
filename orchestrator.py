@@ -213,8 +213,11 @@ class CCAutomatorOrchestrator:
         print("\nStep 3: Analyzing dependencies...")
         
         try:
-            # Run dependency analysis
-            self.dependency_analysis = analyze_project_dependencies(self.project_dir)
+            # Run interactive dependency analysis
+            from dependency_analyzer import DependencyAnalyzer
+            analyzer = DependencyAnalyzer(self.project_dir, interactive=True)
+            self.dependency_analysis = analyzer.analyze()
+            analyzer.save_analysis(self.dependency_analysis)
             
             # Report findings
             if self.dependency_analysis.api_keys:

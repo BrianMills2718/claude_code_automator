@@ -3,8 +3,8 @@
 set -e  # Exit on any error
 
 echo "Validating API keys..."
-if [ -z "${OPENAI_API_KEY}" ]; then
-  echo "ERROR: OPENAI_API_KEY environment variable not set"
+if [ -z "${ANTHROPIC_API_KEY}" ]; then
+  echo "ERROR: ANTHROPIC_API_KEY environment variable not set"
   exit 1
 fi
 
@@ -13,6 +13,10 @@ docker-compose up -d
 
 echo "Waiting for services to be ready..."
 until docker exec chroma echo "ok"; do
+  echo "Waiting for service to be ready..."
+  sleep 2
+done
+until docker exec postgres pg_isready -U app_user; do
   echo "Waiting for service to be ready..."
   sleep 2
 done

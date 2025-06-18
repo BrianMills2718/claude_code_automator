@@ -6,18 +6,37 @@ Analyzes project requirements and identifies external dependencies before execut
 
 import re
 import json
+import sys
 from pathlib import Path
 from typing import Dict, List, Set, Optional, Any
 from dataclasses import dataclass, field
 
 
 @dataclass
+class DependencyOption:
+    """Represents a potential solution for a dependency requirement"""
+    name: str
+    description: str
+    approach: str  # 'api', 'local', 'library', 'service'
+    setup_requirements: List[str]
+    pros: List[str]
+    cons: List[str]
+    recommended_for: str
+    complexity: str  # 'simple', 'moderate', 'complex'
+    cost: str  # 'free', 'paid', 'freemium'
+
+
+@dataclass
 class ExternalDependency:
     """Represents an external dependency requirement"""
     name: str
-    type: str  # 'api_key', 'service', 'command', 'file'
+    type: str  # 'capability' (LLM, vector storage, etc), 'service', 'command', 'file'
     description: str
     required: bool = True
+    capability_needed: Optional[str] = None  # 'language_model', 'vector_database', etc.
+    available_options: List[DependencyOption] = field(default_factory=list)
+    recommended_option: Optional[str] = None
+    selected_option: Optional[str] = None
     setup_instructions: List[str] = field(default_factory=list)
     validation_command: Optional[str] = None
     docker_service: Optional[str] = None
@@ -26,10 +45,11 @@ class ExternalDependency:
 @dataclass
 class DependencyAnalysis:
     """Complete dependency analysis result"""
-    api_keys: List[ExternalDependency] = field(default_factory=list)
+    capabilities: List[ExternalDependency] = field(default_factory=list)
     services: List[ExternalDependency] = field(default_factory=list)
     commands: List[ExternalDependency] = field(default_factory=list)
     files: List[ExternalDependency] = field(default_factory=list)
+    api_keys: List[ExternalDependency] = field(default_factory=list)  # Derived from selected capabilities
     docker_services: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     setup_script: List[str] = field(default_factory=list)
     
@@ -37,79 +57,413 @@ class DependencyAnalysis:
 class DependencyAnalyzer:
     """Analyzes project specifications to identify external dependencies"""
     
-    def __init__(self, project_dir: Path):
+    def __init__(self, project_dir: Path, interactive: bool = True):
         self.project_dir = project_dir
         self.claude_md = project_dir / "CLAUDE.md"
+        self.interactive = interactive
         
-        # Known patterns for different dependency types
-        self.api_key_patterns = {
-            r'openai|gpt|chatgpt': 'OPENAI_API_KEY',
-            r'anthropic|claude': 'ANTHROPIC_API_KEY', 
-            r'pinecone': 'PINECONE_API_KEY',
-            r'hugging\s*face|hf': 'HUGGINGFACE_API_KEY',
-            r'google|gemini': 'GOOGLE_API_KEY',
-            r'azure': 'AZURE_OPENAI_API_KEY',
-            r'cohere': 'COHERE_API_KEY',
-            r'langchain': 'OPENAI_API_KEY',
-        }
-        
-        self.service_patterns = {
-            r'redis': ('redis', 'redis:7-alpine'),
-            r'postgres|postgresql': ('postgres', 'postgres:15-alpine'),
-            r'mongodb|mongo': ('mongodb', 'mongo:7'),
-            r'elasticsearch|elastic': ('elasticsearch', 'elasticsearch:8.11.0'),
-            r'vector\s+database|embeddings': ('chroma', 'chromadb/chroma:latest'),
-            r'mysql': ('mysql', 'mysql:8.0'),
-            r'nginx': ('nginx', 'nginx:alpine'),
+        # Capability detection patterns - what the project needs to do
+        self.capability_patterns = {
+            r'language model|llm|gpt|claude|text generation|natural language|langchain': 'language_model',
+            r'vector database|embeddings|vector search|semantic search|chroma': 'vector_database',
+            r'graph database|knowledge graph|networkx|neo4j': 'graph_database',
+            r'redis|cache|session': 'caching',
+            r'postgres|mysql|database|sql': 'relational_database',
+            r'elasticsearch|search engine|full.?text search': 'search_engine',
         }
         
     def analyze(self) -> DependencyAnalysis:
-        """Perform complete dependency analysis"""
+        """Perform intelligent dependency analysis with interactive selection"""
         analysis = DependencyAnalysis()
         
         if not self.claude_md.exists():
             return analysis
             
-        content = self.claude_md.read_text().lower()
+        content = self.claude_md.read_text()
         
-        # Analyze API key requirements
-        analysis.api_keys = self._analyze_api_keys(content)
+        # 1. Detect required capabilities
+        detected_capabilities = self._detect_capabilities(content)
         
-        # Analyze service requirements 
-        analysis.services = self._analyze_services(content)
+        # 2. Research options for each capability  
+        for capability in detected_capabilities:
+            capability_dep = self._research_capability_options(capability, content)
+            if capability_dep:
+                analysis.capabilities.append(capability_dep)
         
-        # Analyze command requirements
+        # 3. Interactive selection (if enabled)
+        if self.interactive and analysis.capabilities:
+            self._interactive_capability_selection(analysis)
+        
+        # 4. Generate concrete dependencies from selections
+        self._generate_concrete_dependencies(analysis)
+        
+        # 5. Analyze other requirements (commands, files)
         analysis.commands = self._analyze_commands(content)
-        
-        # Analyze file requirements
         analysis.files = self._analyze_files(content)
         
-        # Generate Docker services configuration
+        # 6. Generate Docker services configuration
         analysis.docker_services = self._generate_docker_services(analysis.services)
         
-        # Generate setup script
+        # 7. Generate setup script
         analysis.setup_script = self._generate_setup_script(analysis)
         
         return analysis
     
-    def _analyze_api_keys(self, content: str) -> List[ExternalDependency]:
-        """Detect required API keys from project description"""
-        api_keys = []
+    def _detect_capabilities(self, content: str) -> List[str]:
+        """Detect what capabilities the project needs"""
+        detected = []
+        content_lower = content.lower()
         
-        for pattern, key_name in self.api_key_patterns.items():
-            if re.search(pattern, content, re.IGNORECASE):
-                api_keys.append(ExternalDependency(
-                    name=key_name,
-                    type='api_key',
-                    description=f'API key for {pattern} integration',
-                    setup_instructions=[
-                        f'export {key_name}="your-api-key-here"',
-                        f'# Or add to .env file: {key_name}=your-api-key-here'
-                    ],
-                    validation_command=f'test -n "${key_name}"'
-                ))
+        for pattern, capability in self.capability_patterns.items():
+            if re.search(pattern, content_lower, re.IGNORECASE):
+                if capability not in detected:
+                    detected.append(capability)
         
-        return api_keys
+        return detected
+    
+    def _research_capability_options(self, capability: str, project_content: str) -> Optional[ExternalDependency]:
+        """Research available options for a capability and provide intelligent recommendations"""
+        
+        if capability == 'language_model':
+            return self._research_language_model_options(project_content)
+        elif capability == 'vector_database':
+            return self._research_vector_database_options(project_content)
+        elif capability == 'graph_database':
+            return self._research_graph_database_options(project_content)
+        elif capability == 'caching':
+            return self._research_caching_options(project_content)
+        elif capability == 'relational_database':
+            return self._research_relational_database_options(project_content)
+        
+        return None
+    
+    def _research_language_model_options(self, project_content: str) -> ExternalDependency:
+        """Research LLM options with intelligent recommendations based on project needs"""
+        
+        # Analyze project to determine best recommendations
+        project_lower = project_content.lower()
+        is_rag_system = any(term in project_lower for term in ['rag', 'retrieval', 'knowledge', 'graph'])
+        needs_reasoning = any(term in project_lower for term in ['reasoning', 'analysis', 'complex'])
+        is_production = any(term in project_lower for term in ['production', 'enterprise', 'scale'])
+        
+        options = [
+            DependencyOption(
+                name="openai",
+                description="OpenAI GPT models (GPT-4, GPT-3.5)",
+                approach="api",
+                setup_requirements=["OPENAI_API_KEY"],
+                pros=["Highest quality outputs", "Fast response times", "Excellent reasoning", "Large context windows"],
+                cons=["Paid service", "Requires internet", "Data sent to OpenAI"],
+                recommended_for="Production systems requiring highest quality",
+                complexity="simple",
+                cost="paid"
+            ),
+            DependencyOption(
+                name="anthropic",
+                description="Anthropic Claude models",
+                approach="api", 
+                setup_requirements=["ANTHROPIC_API_KEY"],
+                pros=["Excellent reasoning", "Strong safety", "Good for analysis", "Large context"],
+                cons=["Paid service", "Requires internet", "Data sent to Anthropic"],
+                recommended_for="Complex reasoning and analysis tasks",
+                complexity="simple",
+                cost="paid"
+            ),
+            DependencyOption(
+                name="ollama",
+                description="Local LLM execution with Ollama",
+                approach="local",
+                setup_requirements=["ollama installed", "model downloaded"],
+                pros=["Free to use", "Data stays local", "No internet required", "Good for development"],
+                cons=["Slower than APIs", "Requires powerful hardware", "Setup complexity", "Lower quality"],
+                recommended_for="Development, privacy-sensitive applications",
+                complexity="moderate",
+                cost="free"
+            ),
+            DependencyOption(
+                name="spacy",
+                description="spaCy NLP library (non-generative)",
+                approach="library",
+                setup_requirements=["spacy installed", "language model downloaded"],
+                pros=["Fast", "Free", "Good for NER/parsing", "Works offline"],
+                cons=["No text generation", "Limited understanding", "Not suitable for RAG"],
+                recommended_for="Basic NLP tasks, entity extraction only",
+                complexity="simple",
+                cost="free"
+            )
+        ]
+        
+        # Intelligent recommendation logic
+        if is_rag_system and is_production:
+            recommended = "openai"
+            recommendation_reason = "RAG systems benefit from high-quality language models, and OpenAI provides excellent performance for production use"
+        elif needs_reasoning:
+            recommended = "anthropic"
+            recommendation_reason = "Claude excels at reasoning tasks and complex analysis"
+        elif "development" in project_lower or "prototype" in project_lower:
+            recommended = "ollama"
+            recommendation_reason = "For development/prototyping, local models provide good balance of capability and cost"
+        else:
+            recommended = "openai"
+            recommendation_reason = "OpenAI provides the best general-purpose language model capabilities"
+        
+        return ExternalDependency(
+            name="language_model",
+            type="capability",
+            description="Language model for text understanding and generation",
+            capability_needed="language_model",
+            available_options=options,
+            recommended_option=recommended,
+            setup_instructions=[f"Recommended: {recommended} - {recommendation_reason}"]
+        )
+    
+    def _research_vector_database_options(self, project_content: str) -> ExternalDependency:
+        """Research vector database options"""
+        options = [
+            DependencyOption(
+                name="chroma",
+                description="ChromaDB vector database",
+                approach="service",
+                setup_requirements=["Docker container"],
+                pros=["Easy setup", "Good for development", "Python-native", "Free"],
+                cons=["Less scalable than alternatives"],
+                recommended_for="Development and small-scale applications",
+                complexity="simple",
+                cost="free"
+            ),
+            DependencyOption(
+                name="pinecone",
+                description="Pinecone cloud vector database",
+                approach="api",
+                setup_requirements=["PINECONE_API_KEY"],
+                pros=["Highly scalable", "Managed service", "Good performance"],
+                cons=["Paid service", "Vendor lock-in"],
+                recommended_for="Production applications with scale requirements",
+                complexity="simple",
+                cost="paid"
+            ),
+            DependencyOption(
+                name="in_memory",
+                description="In-memory vector storage (simple)",
+                approach="library",
+                setup_requirements=["numpy", "faiss (optional)"],
+                pros=["No external dependencies", "Fast for small datasets", "Free"],
+                cons=["Data not persistent", "Limited scalability", "No advanced features"],
+                recommended_for="Prototyping and small datasets",
+                complexity="simple",
+                cost="free"
+            )
+        ]
+        
+        # Simple recommendation: in-memory for development, Chroma for most cases
+        is_production = "production" in project_content.lower()
+        recommended = "pinecone" if is_production else "chroma"
+        
+        return ExternalDependency(
+            name="vector_database",
+            type="capability", 
+            description="Vector database for embeddings and semantic search",
+            capability_needed="vector_database",
+            available_options=options,
+            recommended_option=recommended,
+            setup_instructions=[f"Recommended: {recommended} for your use case"]
+        )
+    
+    def _research_graph_database_options(self, project_content: str) -> ExternalDependency:
+        """Research graph database options"""
+        # For now, keep it simple - most projects use NetworkX for graph operations
+        options = [
+            DependencyOption(
+                name="networkx",
+                description="NetworkX Python library",
+                approach="library",
+                setup_requirements=["pip install networkx"],
+                pros=["Simple to use", "Good for analysis", "Free", "Pure Python"],
+                cons=["Not optimized for large graphs", "No persistence"],
+                recommended_for="Most graph analysis tasks",
+                complexity="simple",
+                cost="free"
+            )
+        ]
+        
+        return ExternalDependency(
+            name="graph_database", 
+            type="capability",
+            description="Graph database for knowledge graph operations",
+            capability_needed="graph_database",
+            available_options=options,
+            recommended_option="networkx",
+            setup_instructions=["NetworkX is sufficient for most graph operations"]
+        )
+    
+    def _interactive_capability_selection(self, analysis: DependencyAnalysis) -> None:
+        """Present options to user and get their selections"""
+        
+        print("\n" + "="*60)
+        print("🤖 DEPENDENCY ANALYSIS - Interactive Setup")
+        print("="*60)
+        print(f"Detected {len(analysis.capabilities)} capabilities that need configuration:\n")
+        
+        for capability in analysis.capabilities:
+            print(f"📋 {capability.description.upper()}")
+            print("-" * 50)
+            
+            # Show intelligent recommendation first
+            if capability.recommended_option:
+                recommended_option = next(
+                    (opt for opt in capability.available_options if opt.name == capability.recommended_option), 
+                    None
+                )
+                if recommended_option:
+                    print(f"🎯 RECOMMENDED: {recommended_option.description}")
+                    print(f"   Reason: {capability.setup_instructions[0].split(' - ', 1)[1] if ' - ' in capability.setup_instructions[0] else 'Best general choice'}")
+                    print()
+            
+            # Show all options
+            print("Available options:")
+            for i, option in enumerate(capability.available_options, 1):
+                marker = "⭐" if option.name == capability.recommended_option else "  "
+                print(f"{marker} {i}. {option.description}")
+                print(f"      Cost: {option.cost.title()} | Complexity: {option.complexity.title()}")
+                print(f"      Pros: {', '.join(option.pros[:2])}")
+                print(f"      Best for: {option.recommended_for}")
+                print()
+            
+            # Get user choice
+            while True:
+                try:
+                    default_choice = next(
+                        (i for i, opt in enumerate(capability.available_options, 1) 
+                         if opt.name == capability.recommended_option), 1
+                    )
+                    
+                    choice = input(f"Choose option [1-{len(capability.available_options)}] (default: {default_choice}): ").strip()
+                    
+                    if not choice:
+                        choice = default_choice
+                    else:
+                        choice = int(choice)
+                    
+                    if 1 <= choice <= len(capability.available_options):
+                        selected_option = capability.available_options[choice - 1]
+                        capability.selected_option = selected_option.name
+                        print(f"✅ Selected: {selected_option.description}\n")
+                        break
+                    else:
+                        print(f"Please enter a number between 1 and {len(capability.available_options)}")
+                        
+                except (ValueError, KeyboardInterrupt):
+                    print(f"Please enter a number between 1 and {len(capability.available_options)}")
+                    
+        print("="*60)
+        print("✅ Configuration complete!\n")
+    
+    def _generate_concrete_dependencies(self, analysis: DependencyAnalysis) -> None:
+        """Convert capability selections into concrete API keys and services"""
+        
+        for capability in analysis.capabilities:
+            if not capability.selected_option:
+                # Use recommended option if no selection made
+                capability.selected_option = capability.recommended_option
+            
+            selected = next(
+                (opt for opt in capability.available_options if opt.name == capability.selected_option),
+                None
+            )
+            
+            if not selected:
+                continue
+                
+            # Generate concrete dependencies based on selection
+            if selected.approach == "api":
+                for req in selected.setup_requirements:
+                    if req.endswith("_API_KEY"):
+                        api_key_dep = ExternalDependency(
+                            name=req,
+                            type="api_key",
+                            description=f"API key for {selected.description}",
+                            setup_instructions=[
+                                f'export {req}="your-api-key-here"',
+                                f'# {selected.description} - {selected.recommended_for}'
+                            ],
+                            validation_command=f'test -n "${req}"'
+                        )
+                        analysis.api_keys.append(api_key_dep)
+                        
+            elif selected.approach == "service":
+                service_dep = ExternalDependency(
+                    name=capability.selected_option,
+                    type="service", 
+                    description=selected.description,
+                    docker_service=capability.selected_option
+                )
+                analysis.services.append(service_dep)
+    
+    def _research_caching_options(self, project_content: str) -> ExternalDependency:
+        """Research caching options"""
+        options = [
+            DependencyOption(
+                name="redis",
+                description="Redis in-memory cache",
+                approach="service",
+                setup_requirements=["Docker container"],
+                pros=["Fast", "Persistent", "Feature-rich"],
+                cons=["Requires setup", "Memory usage"],
+                recommended_for="Most caching needs",
+                complexity="simple",
+                cost="free"
+            )
+        ]
+        
+        return ExternalDependency(
+            name="caching",
+            type="capability",
+            description="Caching system for performance",
+            capability_needed="caching",
+            available_options=options,
+            recommended_option="redis",
+            setup_instructions=["Redis is the standard choice for caching"]
+        )
+    
+    def _research_relational_database_options(self, project_content: str) -> ExternalDependency:
+        """Research relational database options"""
+        options = [
+            DependencyOption(
+                name="postgres",
+                description="PostgreSQL database",
+                approach="service",
+                setup_requirements=["Docker container"],
+                pros=["Full-featured", "Standards compliant", "Free"],
+                cons=["Requires setup"],
+                recommended_for="Most applications requiring SQL database",
+                complexity="simple",
+                cost="free"
+            ),
+            DependencyOption(
+                name="sqlite",
+                description="SQLite file database",
+                approach="library",
+                setup_requirements=["Built into Python"],
+                pros=["No setup", "Lightweight", "Good for development"],
+                cons=["Limited concurrency", "No network access"],
+                recommended_for="Development and single-user applications",
+                complexity="simple",
+                cost="free"
+            )
+        ]
+        
+        is_production = "production" in project_content.lower()
+        recommended = "postgres" if is_production else "sqlite"
+        
+        return ExternalDependency(
+            name="relational_database",
+            type="capability",
+            description="Relational database for structured data",
+            capability_needed="relational_database",
+            available_options=options,
+            recommended_option=recommended,
+            setup_instructions=[f"Recommended: {recommended} for your use case"]
+        )
     
     def _analyze_services(self, content: str) -> List[ExternalDependency]:
         """Detect required external services"""

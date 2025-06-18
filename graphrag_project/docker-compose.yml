@@ -7,8 +7,25 @@ services:
       - cc_automator_network
     security_opt:
       - no-new-privileges:true
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_DB=app_db
+      - POSTGRES_USER=app_user
+      - POSTGRES_PASSWORD=secure_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - cc_automator_network
+    security_opt:
+      - no-new-privileges:true
 networks:
   cc_automator_network:
     driver: bridge
     internal: False
 volumes:
+  postgres_data:
+    driver: local

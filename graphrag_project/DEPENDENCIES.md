@@ -3,16 +3,17 @@
 This project requires the following external dependencies:
 
 ## API Keys (Required)
-- `OPENAI_API_KEY`: API key for langchain integration
+- `ANTHROPIC_API_KEY`: API key for Anthropic Claude models
 
 ## External Services
-- **Chroma**: Chroma database/service
+- **Chroma**: ChromaDB vector database
+- **Postgres**: PostgreSQL database
 
 ## Quick Setup
 
 1. Set environment variables:
 ```bash
-export OPENAI_API_KEY="your-key-here"
+export ANTHROPIC_API_KEY="your-key-here"
 ```
 
 2. Start services:
@@ -27,4 +28,4 @@ docker-compose up -d
 
 ## Manual Validation
 
-Check OPENAI_API_KEY: `test -n "$OPENAI_API_KEY"`
+Check ANTHROPIC_API_KEY: `test -n "$ANTHROPIC_API_KEY"`
