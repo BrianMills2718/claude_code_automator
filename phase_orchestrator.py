@@ -54,10 +54,11 @@ class Phase:
 class StreamingJSONProcessor:
     """Processes streaming JSON output from Claude Code"""
     
-    def __init__(self):
+    def __init__(self, max_messages: int = 1000):
         self.messages = []
         self.current_session_id = None
         self.final_result = None
+        self.max_messages = max_messages
         
     def process_line(self, line: str) -> Optional[Dict[str, Any]]:
         """Process a single line of streaming JSON output"""
@@ -71,8 +72,12 @@ class StreamingJSONProcessor:
             if event.get("type") == "system" and event.get("subtype") == "init":
                 self.current_session_id = event.get("session_id")
                 
-            # Collect all messages
+            # Collect messages with limit to prevent memory leaks
             self.messages.append(event)
+            
+            # Keep only recent messages to prevent memory leaks in infinite mode
+            if len(self.messages) > self.max_messages:
+                self.messages = self.messages[-self.max_messages//2:]  # Keep last half
             
             # Capture final result
             if event.get("type") == "result":
@@ -83,20 +88,27 @@ class StreamingJSONProcessor:
         except json.JSONDecodeError as e:
             print(f"Failed to parse JSON: {line}")
             return None
+    
+    def cleanup(self):
+        """Clean up memory to prevent leaks"""
+        self.messages.clear()
+        self.final_result = None
 
 
 class PhaseOrchestrator:
     """Orchestrates execution of isolated phases using Claude Code CLI"""
     
-    def __init__(self, project_name: str, working_dir: Optional[str] = None, verbose: bool = False):
+    def __init__(self, project_name: str, working_dir: Optional[str] = None, verbose: bool = False, infinite_mode: bool = False):
         self.project_name = project_name
         self.working_dir = Path(working_dir) if working_dir else Path.cwd()
         self.verbose = verbose
+        self.infinite_mode = infinite_mode  # Run forever until success
         self.phases: List[Phase] = []
         self.session_manager = {}  # phase_name -> session_id
         self.checkpoints_dir = self.working_dir / ".cc_automator" / "checkpoints"
         self.evidence_dir = self.working_dir / ".cc_automator" / "evidence"
         self.current_milestone = None  # Will be set by runner
+        self.step_back_count = 0  # Track step-backs to prevent infinite loops (unless infinite_mode)
         
         # Create directories
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
@@ -121,7 +133,7 @@ class PhaseOrchestrator:
             print(f"Think Mode: {phase.think_mode or 'None'}")
             print(f"Max Turns: {phase.max_turns}")
             print(f"Timeout: {phase.timeout_seconds}s")
-            print(f"Allowed Tools: {', '.join(phase.allowed_tools)}")
+            # Note: Allowed Tools not shown (SDK ignores restrictions anyway)
             print()
         else:
             # Minimal output
@@ -524,6 +536,37 @@ Write to it: PHASE_COMPLETE"""
             
         return self._phase_to_dict(phase)
     
+    def _select_model_for_phase(self, phase_name: str) -> Optional[str]:
+        """Select appropriate model based on environment variables and phase type"""
+        
+        # Check for global model override (forces all phases to use specified model)
+        global_model = os.environ.get('CLAUDE_MODEL', '').strip()
+        if global_model:
+            if self.verbose:
+                print(f"Using global model override: {global_model} for {phase_name}")
+            return global_model
+        
+        # Check for force Sonnet mode (uses Sonnet for ALL phases)
+        force_sonnet = os.environ.get('FORCE_SONNET', 'false').lower() == 'true'
+        if force_sonnet:
+            model = "claude-3-5-sonnet-20241022"
+            if self.verbose:
+                print(f"Using Sonnet for {phase_name} (FORCE_SONNET enabled)")
+            return model
+        
+        # Default behavior: Sonnet for mechanical phases, Opus for complex phases
+        mechanical_phases = ["lint", "typecheck"]
+        if phase_name in mechanical_phases:
+            model = "claude-3-5-sonnet-20241022"
+            if self.verbose:
+                print(f"Using Sonnet for {phase_name} (cost-effective for mechanical tasks)")
+            return model
+        else:
+            # Use default model (Opus) for complex phases
+            if self.verbose:
+                print(f"Using default model (Opus) for {phase_name} (complex reasoning)")
+            return None  # None means use default (Opus)
+    
     async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase using Claude Code SDK with full conversation preservation"""
         
@@ -549,17 +592,14 @@ Write to it: PHASE_COMPLETE"""
                 print("MCP disabled via DISABLE_MCP environment variable")
         
         # Configure SDK options
-        # For implement phase, explicitly disallow problematic tools
+        # TODO: Tool disallowing is currently disabled due to SDK bug (tools are ignored anyway)
+        # Keeping this code commented for easy revert if SDK is fixed or we find another use case
         disallowed = []
-        if phase.name == "implement":
-            disallowed = ["TodoWrite", "TodoRead", "Bash", "WebSearch", "WebFetch"]
+        # if phase.name == "implement":
+        #     disallowed = ["TodoWrite", "TodoRead", "Bash", "WebSearch", "WebFetch"]
         
-        # Use Sonnet for mechanical phases (lint, typecheck) to save costs
-        model = None
-        if phase.name in ["lint", "typecheck"]:
-            model = "claude-3-5-sonnet-20241022"  # Latest Sonnet model
-            if self.verbose:
-                print(f"Using Sonnet model for {phase.name} phase (cost-effective for mechanical tasks)")
+        # Model selection based on environment variables and phase type
+        model = self._select_model_for_phase(phase.name)
         
         options = ClaudeCodeOptions(
             max_turns=phase.max_turns,
@@ -571,8 +611,9 @@ Write to it: PHASE_COMPLETE"""
             model=model  # Use Sonnet for lint/typecheck, default (Opus) for others
         )
         
-        # Track messages for conversation context
+        # Track messages for conversation context (with memory limit)
         messages: List[Message] = []
+        max_messages = 500  # Limit message history to prevent memory leaks
         
         # Always create log file for debugging
         log_dir = self.working_dir / ".cc_automator" / "logs"
@@ -592,6 +633,10 @@ Write to it: PHASE_COMPLETE"""
             # Execute query with WebSearch timeout handling
             async for message in query(prompt=phase.prompt, options=options):
                 messages.append(message)
+                
+                # Prevent memory leaks by limiting message history
+                if len(messages) > max_messages:
+                    messages = messages[-max_messages//2:]  # Keep last half
                 
                 # Track WebSearch timing
                 if hasattr(message, 'content') and isinstance(message.content, list):
@@ -687,6 +732,20 @@ Write to it: PHASE_COMPLETE"""
                         print(f"✓ Phase {phase.name} completed!")
                         # Extract evidence from messages if available
                         phase.evidence = self._extract_evidence_from_messages(messages)
+                    elif msg_dict.get("subtype") == "error_during_execution" and not msg_dict.get("is_error", False):
+                        # SDK bug: "error_during_execution" with is_error=false usually means work was done
+                        # Check if outputs were actually created despite SDK error
+                        if self._validate_phase_outputs(phase):
+                            phase.status = PhaseStatus.COMPLETED
+                            phase.cost_usd = msg_dict.get("total_cost_usd", 0.0)
+                            phase.duration_ms = msg_dict.get("duration_ms", 0)
+                            print(f"✓ Phase {phase.name} completed! (SDK reported error but outputs found)")
+                            # Extract evidence from messages if available
+                            phase.evidence = self._extract_evidence_from_messages(messages)
+                        else:
+                            phase.status = PhaseStatus.FAILED
+                            phase.error = "SDK reported error_during_execution and no valid outputs found"
+                            print(f"✗ Phase {phase.name} failed: SDK error with no outputs")
                     else:
                         phase.status = PhaseStatus.FAILED
                         phase.error = f"Phase failed: {msg_dict.get('subtype')}"
@@ -761,7 +820,7 @@ Write to it: PHASE_COMPLETE"""
             if hasattr(self, 'session_manager') and phase.session_id:
                 self.session_manager[phase.name] = {
                     "session_id": phase.session_id,
-                    "messages": messages,
+                    "messages": messages[-50:],  # Only keep last 50 messages to prevent memory leaks
                     "sdk": True
                 }
             
@@ -769,12 +828,20 @@ Write to it: PHASE_COMPLETE"""
             self._save_milestone_evidence(phase)
             self._print_phase_summary(phase)
             
+            # Clean up messages to prevent memory leaks in infinite mode
+            messages.clear()
+            
             # CRITICAL: Validate phase outputs before claiming success
             if phase.status == PhaseStatus.COMPLETED:
-                if not self._validate_phase_outputs(phase):
-                    phase.status = PhaseStatus.FAILED
-                    phase.error = "Phase validation failed - outputs do not meet requirements"
-                    print(f"✗ Phase {phase.name} validation failed despite SDK claiming success")
+                validation_result = self._validate_phase_outputs_with_feedback(phase)
+                if not validation_result["success"]:
+                    # Attempt intelligent retry with specific feedback
+                    retry_result = await self._retry_phase_with_validation_feedback(phase, validation_result["feedback"])
+                    if not retry_result:
+                        phase.status = PhaseStatus.FAILED
+                        phase.error = f"Phase validation failed: {validation_result['feedback']}"
+                        print(f"✗ Phase {phase.name} validation failed despite SDK claiming success")
+                        print(f"  Specific issue: {validation_result['feedback']}")
             
         return self._phase_to_dict(phase)
     
@@ -887,8 +954,8 @@ Complete the phase now."""
                                 if research_file.exists() and len(research_file.read_text()) > 200:
                                     print(f"✓ Recovery created research.md ({len(research_file.read_text())} chars) - considering success")
                                     return True
-                            # Still consider it a success if Claude created output files
-                            return True
+                            # REMOVED: No validation bypass - maintain anti-cheating philosophy
+                            return False
                             
         except Exception as recovery_error:
             print(f"✗ Recovery attempt failed: {recovery_error}")
@@ -914,9 +981,13 @@ Complete the phase now."""
     
     async def _execute_with_subphases(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase broken into sub-phases to avoid timeouts."""
-        from subphase_config import get_subphases
+        try:
+            from subphase_config import get_subphases
+            subphases = get_subphases(phase.name)
+        except ImportError:
+            print(f"⚠️  subphase_config not available, falling back to regular execution")
+            return await self._execute_with_sdk(phase)
         
-        subphases = get_subphases(phase.name)
         if not subphases:
             # Fall back to regular execution
             return await self._execute_with_sdk(phase)
@@ -1234,6 +1305,666 @@ Complete the phase now."""
                 return any(milestone_dir.iterdir())
         return False
     
+    def _validate_phase_outputs_with_feedback(self, phase: Phase) -> Dict[str, Any]:
+        """Validate phase outputs and provide specific feedback about what's missing"""
+        
+        # First try standard validation
+        if self._validate_phase_outputs(phase):
+            return {"success": True, "feedback": ""}
+        
+        # Generate specific feedback about what failed
+        feedback = self._generate_validation_feedback(phase)
+        return {"success": False, "feedback": feedback}
+    
+    def _generate_validation_feedback(self, phase: Phase) -> str:
+        """Generate specific feedback about why validation failed"""
+        
+        if phase.name == "e2e":
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            
+            e2e_files = list(milestone_dir.glob("*e2e*.log")) + list(milestone_dir.glob("*evidence*.log"))
+            if not e2e_files:
+                return f"Missing required evidence log file. You must create: {milestone_dir}/e2e_evidence.log with detailed test results and command outputs. This file is mandatory for validation."
+            else:
+                return "Evidence log exists but main.py execution test failed. Check that main.py runs without errors and exits cleanly."
+                
+        elif phase.name == "research":
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            research_files = list(milestone_dir.glob("*research*.md"))
+            if not research_files:
+                return f"Missing required research.md file. You must create: {milestone_dir}/research.md with analysis of current code and requirements."
+            else:
+                return "Research file exists but doesn't have enough content (must be >100 characters)."
+                
+        elif phase.name == "planning":
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            plan_files = list(milestone_dir.glob("*plan*.md"))
+            if not plan_files:
+                return f"Missing required plan.md file. You must create: {milestone_dir}/plan.md with detailed implementation plan."
+            else:
+                return "Plan file exists but doesn't have enough content (must be >50 characters)."
+                
+        elif phase.name == "test":
+            return "Unit tests are failing. Run 'python -m pytest tests/unit -v' to see specific test failures and fix them."
+            
+        elif phase.name == "integration":
+            return "Integration tests are failing. Run 'python -m pytest tests/integration -v' to see specific test failures and fix them."
+            
+        elif phase.name == "lint":
+            return "Flake8 linting errors found. Run 'flake8 --select=F' to see specific errors and fix them."
+            
+        elif phase.name == "typecheck":
+            return "MyPy type checking errors found. Run 'mypy --strict .' to see specific errors and fix them."
+            
+        elif phase.name == "implement":
+            main_py = self.working_dir / "main.py"
+            src_dir = self.working_dir / "src"
+            if not main_py.exists() and not src_dir.exists():
+                return "No implementation files found. You must create main.py or files in src/ directory."
+            else:
+                return "Implementation files exist but may be incomplete or broken."
+                
+        return f"Validation failed for {phase.name} phase. Check the phase requirements and ensure all outputs are created correctly."
+    
+    async def _retry_phase_with_validation_feedback(self, phase: Phase, feedback: str) -> bool:
+        """Advanced multi-level retry system with intelligent phase recovery"""
+        
+        # Level 1: Targeted retry with specific feedback
+        level_1_result = await self._level_1_targeted_retry(phase, feedback)
+        if level_1_result:
+            return True
+            
+        # Level 2: Enhanced retry with more context and debugging 
+        level_2_result = await self._level_2_enhanced_retry(phase, feedback)
+        if level_2_result:
+            return True
+            
+        # Level 3: Intelligent dependency analysis - can Claude step back?
+        level_3_result = await self._level_3_dependency_analysis(phase, feedback)
+        return level_3_result
+    
+    async def _level_1_targeted_retry(self, phase: Phase, feedback: str) -> bool:
+        """Level 1: Simple targeted retry with specific feedback"""
+        
+        print(f"🔄 Level 1 Retry: {phase.name} phase with validation feedback...")
+        
+        retry_prompt = f"""PHASE RETRY: {phase.name.upper()}
+        
+You previously completed this phase, but validation failed for a specific reason:
+
+VALIDATION FEEDBACK: {feedback}
+
+Your task: Fix the specific issue mentioned above and complete the {phase.name} phase properly.
+
+Original phase description: {phase.description}
+
+CRITICAL: You must address the validation feedback directly. Don't just redo the work - specifically fix what was identified as missing or broken.
+
+Focus on creating the exact files and outputs that validation is looking for.
+"""
+        
+        # Configure retry options
+        model = self._select_model_for_phase(phase.name)
+        options = ClaudeCodeOptions(
+            max_turns=10,
+            allowed_tools=phase.allowed_tools,
+            disallowed_tools=[],
+            mcp_servers={},
+            cwd=str(self.working_dir),
+            permission_mode="bypassPermissions",
+            model=model
+        )
+        
+        try:
+            retry_messages = []
+            async for message in query(prompt=retry_prompt, options=options):
+                retry_messages.append(message)
+                
+                # Prevent memory leaks in retry loops
+                if len(retry_messages) > 100:
+                    retry_messages = retry_messages[-50:]
+                
+                if hasattr(message, '__dict__'):
+                    msg_dict = message.__dict__
+                elif isinstance(message, dict):
+                    msg_dict = message
+                else:
+                    continue
+                    
+                if msg_dict.get("type") == "result":
+                    if msg_dict.get("is_error", False):
+                        print(f"✗ Level 1 retry failed: {msg_dict.get('result', 'Unknown error')}")
+                        return False
+                    else:
+                        print(f"✓ Level 1 retry completed, re-validating...")
+                        return self._validate_phase_outputs(phase)
+                        
+        except Exception as e:
+            print(f"✗ Level 1 retry attempt failed: {e}")
+            return False
+        finally:
+            # Cleanup retry messages to prevent memory leaks
+            if 'retry_messages' in locals():
+                retry_messages.clear()
+        
+        return False
+    
+    async def _level_2_enhanced_retry(self, phase: Phase, feedback: str) -> bool:
+        """Level 2: Enhanced retry with debugging context and phase history"""
+        
+        print(f"🔧 Level 2 Enhanced Retry: {phase.name} phase with debugging context...")
+        
+        # Gather context from previous phases for better understanding
+        milestone_num = getattr(self, 'current_milestone', 1)
+        milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+        
+        context_info = []
+        
+        # Add research context if it exists
+        research_files = list(milestone_dir.glob("*research*.md")) if milestone_dir.exists() else []
+        if research_files:
+            try:
+                research_content = research_files[0].read_text()[:500]
+                context_info.append(f"RESEARCH CONTEXT:\n{research_content}...")
+            except:
+                pass
+        
+        # Add plan context if it exists
+        plan_files = list(milestone_dir.glob("*plan*.md")) if milestone_dir.exists() else []
+        if plan_files:
+            try:
+                plan_content = plan_files[0].read_text()[:500]
+                context_info.append(f"PLAN CONTEXT:\n{plan_content}...")
+            except:
+                pass
+        
+        enhanced_prompt = f"""PHASE ENHANCED RETRY: {phase.name.upper()}
+
+SITUATION: You have attempted this phase twice but validation still fails.
+
+VALIDATION FEEDBACK: {feedback}
+
+{chr(10).join(context_info)}
+
+DEBUGGING APPROACH:
+1. Carefully read the validation feedback
+2. Review what files/outputs are expected
+3. Check the working directory structure
+4. Create exactly what validation is looking for
+5. Test your work before finishing
+
+Original phase description: {phase.description}
+
+CRITICAL: This is an enhanced retry with more context. Take your time, debug systematically, and ensure you create the exact outputs that validation requires.
+
+Be thorough and methodical in your approach.
+"""
+        
+        model = self._select_model_for_phase(phase.name)
+        options = ClaudeCodeOptions(
+            max_turns=15,  # More turns for debugging
+            allowed_tools=phase.allowed_tools,
+            disallowed_tools=[],
+            mcp_servers={},
+            cwd=str(self.working_dir),
+            permission_mode="bypassPermissions",
+            model=model
+        )
+        
+        try:
+            retry_messages = []
+            async for message in query(prompt=enhanced_prompt, options=options):
+                retry_messages.append(message)
+                
+                # Prevent memory leaks in retry loops
+                if len(retry_messages) > 150:
+                    retry_messages = retry_messages[-75:]
+                
+                if hasattr(message, '__dict__'):
+                    msg_dict = message.__dict__
+                elif isinstance(message, dict):
+                    msg_dict = message
+                else:
+                    continue
+                    
+                if msg_dict.get("type") == "result":
+                    if msg_dict.get("is_error", False):
+                        print(f"✗ Level 2 enhanced retry failed: {msg_dict.get('result', 'Unknown error')}")
+                        return False
+                    else:
+                        print(f"✓ Level 2 enhanced retry completed, re-validating...")
+                        return self._validate_phase_outputs(phase)
+                        
+        except Exception as e:
+            print(f"✗ Level 2 enhanced retry attempt failed: {e}")
+            return False
+        finally:
+            # Cleanup retry messages to prevent memory leaks
+            if 'retry_messages' in locals():
+                retry_messages.clear()
+        
+        return False
+    
+    async def _level_3_dependency_analysis(self, phase: Phase, feedback: str) -> bool:
+        """Level 3: Intelligent analysis of whether we need to step back to previous phases"""
+        
+        print(f"🧠 Level 3 Dependency Analysis: Checking if {phase.name} requires stepping back...")
+        
+        analysis_prompt = f"""DEPENDENCY ANALYSIS: {phase.name.upper()}
+
+SITUATION: This phase has failed validation twice despite retries.
+
+VALIDATION FEEDBACK: {feedback}
+
+PHASE DESCRIPTION: {phase.description}
+
+YOUR TASK: Analyze whether this failure indicates a problem with earlier phases that needs to be fixed first.
+
+ANALYZE:
+1. Does the validation failure suggest missing dependencies from earlier phases?
+2. Are required inputs from research/planning/implementation phases missing or incorrect?
+3. Could this be fixed by stepping back and re-doing an earlier phase?
+4. Or is this truly just a problem with the current phase implementation?
+
+RESPOND WITH:
+- ANALYSIS: [Your analysis of the root cause]
+- STEP_BACK_NEEDED: yes or no
+- STEP_BACK_TO: [phase name if stepping back is needed, e.g., "research", "planning", "implement"]
+- REASON: [Why stepping back is needed or why current phase just needs better implementation]
+
+Be honest and analytical. If earlier phases have fundamental issues, stepping back is the right approach.
+"""
+        
+        model = self._select_model_for_phase(phase.name)
+        options = ClaudeCodeOptions(
+            max_turns=5,  # Short analysis
+            allowed_tools=["Read", "Bash"],  # Limited tools for analysis
+            disallowed_tools=[],
+            mcp_servers={},
+            cwd=str(self.working_dir),
+            permission_mode="bypassPermissions",
+            model=model
+        )
+        
+        try:
+            analysis_response = ""
+            async for message in query(prompt=analysis_prompt, options=options):
+                if hasattr(message, '__dict__'):
+                    msg_dict = message.__dict__
+                elif isinstance(message, dict):
+                    msg_dict = message
+                else:
+                    continue
+                    
+                if msg_dict.get("type") == "assistant":
+                    content = msg_dict.get("message", {}).get("content", "")
+                    analysis_response += content
+                elif msg_dict.get("type") == "result":
+                    break
+            
+            # Parse the analysis response
+            step_back_needed = "STEP_BACK_NEEDED: yes" in analysis_response.lower()
+            
+            if step_back_needed:
+                # Extract which phase to step back to
+                step_back_phase = None
+                for line in analysis_response.split('\n'):
+                    if 'STEP_BACK_TO:' in line.upper():
+                        step_back_phase = line.split(':')[-1].strip().lower()
+                        break
+                
+                if step_back_phase in ['research', 'planning', 'implement']:
+                    print(f"🔙 Analysis suggests stepping back to {step_back_phase} phase")
+                    print(f"📋 Analysis summary: {analysis_response[:200]}...")
+                    
+                    # Actually trigger the step-back with failure insights
+                    step_back_success = await self._execute_intelligent_step_back(
+                        current_phase=phase,
+                        step_back_to_phase=step_back_phase,
+                        failure_insights=analysis_response,
+                        original_feedback=feedback
+                    )
+                    
+                    return step_back_success
+                else:
+                    print(f"🤔 Analysis unclear about which phase to step back to")
+                    return False
+            else:
+                print(f"🎯 Analysis suggests the issue is fixable in current phase")
+                # Attempt one final targeted implementation with the analysis insights
+                return await self._level_3_final_implementation_attempt(phase, feedback, analysis_response)
+                
+        except Exception as e:
+            print(f"✗ Level 3 dependency analysis failed: {e}")
+            return False
+        
+        return False
+    
+    async def _level_3_final_implementation_attempt(self, phase: Phase, feedback: str, analysis: str) -> bool:
+        """Final implementation attempt based on dependency analysis insights"""
+        
+        print(f"🎯 Final Implementation Attempt: {phase.name} with analysis insights...")
+        
+        final_prompt = f"""FINAL IMPLEMENTATION ATTEMPT: {phase.name.upper()}
+
+SITUATION: Multiple retries have failed, but dependency analysis suggests this phase can be completed successfully.
+
+VALIDATION FEEDBACK: {feedback}
+
+ANALYSIS INSIGHTS:
+{analysis[:500]}...
+
+YOUR FINAL TASK:
+1. Use the analysis insights to understand what's really needed
+2. Implement the most direct, simple solution to meet validation requirements
+3. Focus on the bare minimum that will satisfy validation
+4. Don't overthink - just create what's expected
+
+VALIDATION REQUIREMENTS:
+- {feedback}
+
+This is the final attempt before giving up. Make it count.
+"""
+        
+        model = self._select_model_for_phase(phase.name)
+        options = ClaudeCodeOptions(
+            max_turns=8,  # Limited but focused
+            allowed_tools=phase.allowed_tools,
+            disallowed_tools=[],
+            mcp_servers={},
+            cwd=str(self.working_dir),
+            permission_mode="bypassPermissions",
+            model=model
+        )
+        
+        try:
+            async for message in query(prompt=final_prompt, options=options):
+                if hasattr(message, '__dict__'):
+                    msg_dict = message.__dict__
+                elif isinstance(message, dict):
+                    msg_dict = message
+                else:
+                    continue
+                    
+                if msg_dict.get("type") == "result":
+                    if msg_dict.get("is_error", False):
+                        print(f"✗ Final implementation attempt failed: {msg_dict.get('result', 'Unknown error')}")
+                        return False
+                    else:
+                        print(f"✓ Final implementation completed, re-validating...")
+                        return self._validate_phase_outputs(phase)
+                        
+        except Exception as e:
+            print(f"✗ Final implementation attempt failed: {e}")
+            return False
+        
+        return False
+    
+    async def _execute_intelligent_step_back(self, current_phase: Phase, step_back_to_phase: str, 
+                                           failure_insights: str, original_feedback: str) -> bool:
+        """Execute intelligent step-back with failure insights propagated to earlier phases"""
+        
+        # Check infinite mode vs step-back limits
+        if not self.infinite_mode:
+            self.step_back_count += 1
+            max_step_backs = 3
+            if self.step_back_count > max_step_backs:
+                print(f"✗ Maximum step-backs ({max_step_backs}) reached. Stopping to prevent infinite loop.")
+                current_phase.error = f"Max step-backs reached: {self.step_back_count}"
+                return False
+        else:
+            self.step_back_count += 1
+            print(f"🔄 Infinite mode: Step-back #{self.step_back_count} (will continue until success)")
+        
+        print(f"🔄 Executing intelligent step-back to {step_back_to_phase} phase...")
+        
+        # Create failure history to avoid repeating mistakes
+        failure_history = {
+            "failed_phase": current_phase.name,
+            "original_feedback": original_feedback,
+            "analysis_insights": failure_insights,
+            "timestamp": datetime.now().isoformat(),
+            "attempts_made": ["level_1_retry", "level_2_enhanced_retry", "level_3_analysis"],
+            "step_back_count": self.step_back_count
+        }
+        
+        # Save failure history for reference
+        milestone_num = getattr(self, 'current_milestone', 1)
+        failure_log_dir = self.working_dir / ".cc_automator" / "failure_logs"
+        failure_log_dir.mkdir(parents=True, exist_ok=True)
+        
+        failure_log_file = failure_log_dir / f"milestone_{milestone_num}_{current_phase.name}_failure.json"
+        with open(failure_log_file, 'w') as f:
+            json.dump(failure_history, f, indent=2)
+        
+        # Now re-execute the step-back phase with failure insights
+        step_back_success = await self._re_execute_phase_with_insights(
+            phase_name=step_back_to_phase,
+            failure_history=failure_history
+        )
+        
+        if step_back_success:
+            # If step-back phase succeeded, now re-execute all subsequent phases up to current
+            return await self._re_execute_subsequent_phases(step_back_to_phase, current_phase.name, failure_history)
+        else:
+            print(f"✗ Step-back to {step_back_to_phase} phase also failed")
+            current_phase.error = f"Step-back to {step_back_to_phase} failed: could not resolve foundational issues"
+            return False
+    
+    async def _re_execute_phase_with_insights(self, phase_name: str, failure_history: Dict[str, Any]) -> bool:
+        """Re-execute a phase with insights from future failures"""
+        
+        print(f"🧠 Re-executing {phase_name} phase with failure insights...")
+        
+        # Get the original phase configuration
+        phase_config = None
+        for config_name, config_desc, config_tools, config_think, config_max_turns in PHASE_CONFIGS:
+            if config_name == phase_name:
+                phase_config = (config_name, config_desc, config_tools, config_think, config_max_turns)
+                break
+        
+        if not phase_config:
+            print(f"✗ Unknown phase: {phase_name}")
+            return False
+        
+        # Import the phase prompt generator with fallback
+        try:
+            from phase_prompt_generator import PhasePromptGenerator
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone = type('Milestone', (), {
+                'number': milestone_num, 
+                'description': f"Milestone {milestone_num}",
+                'requirements': []
+            })()
+            
+            prompt_generator = PhasePromptGenerator(
+                working_dir=self.working_dir,
+                project_name=self.project_name,
+                milestone=milestone
+            )
+        except ImportError:
+            print(f"⚠️  PhasePromptGenerator not available, using fallback prompt")
+            # Create a simple fallback prompt
+            base_prompt = f"Complete the {phase_name} phase for milestone {getattr(self, 'current_milestone', 1)}"
+            return await self._execute_simple_phase_with_insights(phase_name, base_prompt, failure_history)
+        
+        # Generate base prompt
+        base_prompt = prompt_generator.generate_prompt(phase_name)
+        
+        # Enhance prompt with failure insights
+        enhanced_prompt = f"""{base_prompt}
+
+CRITICAL - FAILURE INSIGHTS FROM FUTURE PHASES:
+
+Previous attempt at this phase led to failures in later phases. Learn from these insights:
+
+FAILED PHASE: {failure_history['failed_phase']}
+FAILURE REASON: {failure_history['original_feedback']}
+
+ANALYSIS OF ROOT CAUSE:
+{failure_history['analysis_insights']}
+
+WHAT THIS MEANS FOR {phase_name.upper()} PHASE:
+- Your {phase_name} output was incomplete or incorrect in ways that caused {failure_history['failed_phase']} to fail
+- Focus on addressing the root cause issues identified in the analysis
+- Be more thorough and complete in your {phase_name} work
+- Anticipate what downstream phases will need from your output
+
+PREVENT REPETITION:
+- Don't just redo the same work that failed before
+- Address the specific deficiencies identified
+- Create more comprehensive, complete outputs
+- Think about dependencies that downstream phases will have
+
+This is a corrective re-execution. Make it count by learning from the failure insights.
+"""
+        
+        # Create enhanced phase
+        config_name, config_desc, config_tools, config_think, config_max_turns = phase_config
+        enhanced_phase = Phase(
+            name=config_name,
+            description=f"CORRECTIVE: {config_desc} (with failure insights)",
+            prompt=enhanced_prompt,
+            allowed_tools=config_tools,
+            think_mode=config_think,
+            max_turns=config_max_turns + 10  # Extra turns for corrective work
+        )
+        
+        # Execute with enhanced context
+        try:
+            result = await self._execute_with_sdk(enhanced_phase)
+            
+            if enhanced_phase.status == PhaseStatus.COMPLETED:
+                # Validate the corrected phase output
+                if self._validate_phase_outputs(enhanced_phase):
+                    print(f"✓ Corrective {phase_name} phase completed and validated")
+                    return True
+                else:
+                    print(f"✗ Corrective {phase_name} phase completed but validation failed")
+                    return False
+            else:
+                print(f"✗ Corrective {phase_name} phase failed: {enhanced_phase.error}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ Corrective {phase_name} phase error: {e}")
+            return False
+    
+    async def _re_execute_subsequent_phases(self, step_back_phase: str, target_phase: str, 
+                                          failure_history: Dict[str, Any]) -> bool:
+        """Re-execute all phases from step-back phase to target phase with failure context"""
+        
+        # Define phase order
+        phase_order = ["research", "planning", "implement", "lint", "typecheck", "test", "integration", "e2e", "validate", "commit"]
+        
+        try:
+            step_back_index = phase_order.index(step_back_phase)
+            target_index = phase_order.index(target_phase)
+        except ValueError:
+            print(f"✗ Unknown phase in sequence: {step_back_phase} or {target_phase}")
+            return False
+        
+        print(f"🔄 Re-executing phases from {step_back_phase} to {target_phase}...")
+        
+        # Execute each phase in sequence
+        for i in range(step_back_index + 1, target_index + 1):
+            phase_name = phase_order[i]
+            
+            # Add failure context to each subsequent phase
+            context_aware_success = await self._execute_phase_with_failure_context(
+                phase_name=phase_name,
+                failure_history=failure_history
+            )
+            
+            if not context_aware_success:
+                print(f"✗ Re-execution failed at {phase_name} phase")
+                return False
+        
+        print(f"✓ Successfully re-executed all phases from {step_back_phase} to {target_phase}")
+        return True
+    
+    async def _execute_phase_with_failure_context(self, phase_name: str, failure_history: Dict[str, Any]) -> bool:
+        """Execute a phase with awareness of why previous attempts failed"""
+        
+        print(f"🎯 Executing {phase_name} with failure context awareness...")
+        
+        # Get phase configuration
+        phase_config = None
+        for config_name, config_desc, config_tools, config_think, config_max_turns in PHASE_CONFIGS:
+            if config_name == phase_name:
+                phase_config = (config_name, config_desc, config_tools, config_think, config_max_turns)
+                break
+        
+        if not phase_config:
+            return False
+        
+        # Generate phase prompt with failure awareness
+        try:
+            from phase_prompt_generator import PhasePromptGenerator
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone = type('Milestone', (), {
+                'number': milestone_num,
+                'description': f"Milestone {milestone_num}",
+                'requirements': []
+            })()
+            
+            prompt_generator = PhasePromptGenerator(
+                working_dir=self.working_dir,
+                project_name=self.project_name,
+                milestone=milestone
+            )
+            
+            base_prompt = prompt_generator.generate_prompt(phase_name)
+        except ImportError:
+            print(f"⚠️  PhasePromptGenerator not available, using fallback prompt")
+            # Create a simple fallback prompt
+            base_prompt = f"Complete the {phase_name} phase for milestone {getattr(self, 'current_milestone', 1)}"
+        
+        # Add failure context
+        context_aware_prompt = f"""{base_prompt}
+
+FAILURE CONTEXT AWARENESS:
+
+A previous iteration of this pipeline failed at the {failure_history['failed_phase']} phase.
+Root cause analysis indicated: {failure_history['analysis_insights'][:300]}...
+
+Your {phase_name} phase must be aware of this context and ensure your work contributes to preventing similar failures.
+
+Be thorough, complete, and anticipate what downstream phases will need from your output.
+"""
+        
+        # Create and execute context-aware phase
+        config_name, config_desc, config_tools, config_think, config_max_turns = phase_config
+        context_phase = Phase(
+            name=config_name,
+            description=f"CONTEXT-AWARE: {config_desc}",
+            prompt=context_aware_prompt,
+            allowed_tools=config_tools,
+            think_mode=config_think,
+            max_turns=config_max_turns
+        )
+        
+        try:
+            result = await self._execute_with_sdk(context_phase)
+            
+            if context_phase.status == PhaseStatus.COMPLETED:
+                if self._validate_phase_outputs(context_phase):
+                    print(f"✓ Context-aware {phase_name} phase completed and validated")
+                    return True
+                else:
+                    print(f"✗ Context-aware {phase_name} phase validation failed")
+                    return False
+            else:
+                print(f"✗ Context-aware {phase_name} phase failed: {context_phase.error}")
+                return False
+                
+        except Exception as e:
+            print(f"✗ Context-aware {phase_name} phase error: {e}")
+            return False
+    
     def _validate_phase_outputs(self, phase: Phase) -> bool:
         """Validate that phase outputs meet requirements"""
         
@@ -1258,9 +1989,9 @@ Complete the phase now."""
             return result.returncode == 0 and "Success: no issues found" in result.stdout
             
         elif phase.name == "test":
-            # Run pytest on unit tests
+            # Run pytest on unit tests with proper Python path
             result = subprocess.run(
-                ["pytest", "tests/unit", "-xvs"],
+                ["python", "-m", "pytest", "tests/unit", "-xvs"],
                 capture_output=True,
                 text=True,
                 cwd=str(self.working_dir)
@@ -1268,9 +1999,9 @@ Complete the phase now."""
             return result.returncode == 0
             
         elif phase.name == "integration":
-            # Run pytest on integration tests
+            # Run pytest on integration tests with proper Python path
             result = subprocess.run(
-                ["pytest", "tests/integration", "-xvs"],
+                ["python", "-m", "pytest", "tests/integration", "-xvs"],
                 capture_output=True,
                 text=True,
                 cwd=str(self.working_dir)
@@ -1338,49 +2069,77 @@ Complete the phase now."""
             milestone_num = getattr(self, 'current_milestone', 1)
             milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
             
-            # Look for e2e evidence log or similar
+            # STRICT: Evidence log is REQUIRED - no exceptions
+            # This is exactly what prevents Claude from cheating
             e2e_files = list(milestone_dir.glob("*e2e*.log")) + list(milestone_dir.glob("*evidence*.log"))
             if not e2e_files:
                 if self.verbose:
                     print(f"E2E validation failed: no evidence log found in {milestone_dir}")
+                    print("E2E phase must create e2e_evidence.log as proof of testing")
                 return False
             
-            # Check if main.py is interactive by looking for input() calls
+            # Evidence log exists - now verify main.py actually works
             main_py = self.working_dir / "main.py"
-            is_interactive = False
-            if main_py.exists():
-                content = main_py.read_text()
-                is_interactive = 'input(' in content or 'raw_input(' in content
+            if not main_py.exists():
+                if self.verbose:
+                    print(f"E2E validation failed: main.py not found")
+                return False
                 
-            # Verify main.py actually runs without errors
-            if is_interactive:
-                # For interactive programs, provide test input
-                if self.verbose:
-                    print("E2E: Detected interactive program, providing test input")
-                result = subprocess.run(
-                    ["python", "main.py"],
-                    input="5\n",  # Common exit option
-                    capture_output=True,
-                    text=True,
-                    cwd=str(self.working_dir),
-                    timeout=10  # Prevent hanging
-                )
-            else:
-                # For non-interactive programs, run directly
-                if self.verbose:
-                    print("E2E: Running non-interactive program")
-                result = subprocess.run(
-                    ["python", "main.py"],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(self.working_dir),
-                    timeout=10
-                )
+            # Check if it's interactive and test accordingly
+            content = main_py.read_text()
+            is_interactive = 'input(' in content or 'raw_input(' in content
             
-            if result.returncode != 0:
+            try:
+                if is_interactive:
+                    # For interactive programs, try common exit patterns
+                    if self.verbose:
+                        print("E2E: Detected interactive program, trying common exit patterns")
+                    
+                    exit_patterns = ["q\n", "exit\n", "8\n", "0\n", "\n"]
+                    success = False
+                    
+                    for test_input in exit_patterns:
+                        try:
+                            result = subprocess.run(
+                                ["python", "main.py"],
+                                input=test_input,
+                                capture_output=True,
+                                text=True,
+                                cwd=str(self.working_dir),
+                                timeout=10
+                            )
+                            if result.returncode == 0:
+                                if self.verbose:
+                                    print(f"E2E: Success with input: {repr(test_input.strip())}")
+                                success = True
+                                break
+                        except subprocess.TimeoutExpired:
+                            continue
+                    
+                    if not success:
+                        if self.verbose:
+                            print("E2E validation failed: main.py interactive program doesn't exit cleanly")
+                        return False
+                        
+                else:
+                    # Non-interactive, run directly
+                    if self.verbose:
+                        print("E2E: Running non-interactive program")
+                    result = subprocess.run(
+                        ["python", "main.py"],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(self.working_dir),
+                        timeout=10
+                    )
+                    if result.returncode != 0:
+                        if self.verbose:
+                            print(f"E2E validation failed: main.py exited with code {result.returncode}")
+                        return False
+                        
+            except Exception as e:
                 if self.verbose:
-                    print(f"E2E validation failed: main.py exited with code {result.returncode}")
-                    print(f"stderr: {result.stderr}")
+                    print(f"E2E validation error: {e}")
                 return False
                 
             return True

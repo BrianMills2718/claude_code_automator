@@ -5,6 +5,7 @@ Handles command-line parsing and launches the orchestrator
 """
 
 import sys
+import os
 import argparse
 from pathlib import Path
 
@@ -14,7 +15,18 @@ from orchestrator import CCAutomatorOrchestrator
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
-        description="CC_AUTOMATOR3 - Autonomous Code Generation System"
+        description="CC_AUTOMATOR3 - Autonomous Code Generation System",
+        epilog="""
+Model Selection Examples:
+  python cli.py --project myapp                    # Default: Opus for complex, Sonnet for lint/typecheck
+  python cli.py --project myapp --force-sonnet    # Use Sonnet for ALL phases (cost-effective)
+  python cli.py --project myapp --model claude-3-5-sonnet-20241022  # Force specific model for ALL phases
+  
+Environment Variables:
+  FORCE_SONNET=true     # Use Sonnet for all phases
+  CLAUDE_MODEL=<model>  # Override model for all phases
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
     # Project options
@@ -43,6 +55,14 @@ def main():
     # Debug options
     parser.add_argument("--verbose", action="store_true",
                        help="Show verbose output including all phase details")
+    parser.add_argument("--infinite", action="store_true",
+                       help="Run forever until success (no step-back limits)")
+    
+    # Model selection options
+    parser.add_argument("--force-sonnet", action="store_true",
+                       help="Use Sonnet model for ALL phases (cost-effective)")
+    parser.add_argument("--model", type=str,
+                       help="Override model for all phases (e.g., claude-3-5-sonnet-20241022)")
     
     args = parser.parse_args()
     
@@ -57,6 +77,12 @@ def main():
     use_parallel = not args.no_parallel
     use_visual = not args.no_visual
     use_file_parallel = not args.no_file_parallel
+    
+    # Set model selection environment variables
+    if args.force_sonnet:
+        os.environ['FORCE_SONNET'] = 'true'
+    if args.model:
+        os.environ['CLAUDE_MODEL'] = args.model
         
     # Create and run orchestrator
     orchestrator = CCAutomatorOrchestrator(
@@ -67,7 +93,8 @@ def main():
         use_visual=use_visual,
         specific_milestone=args.milestone,
         verbose=args.verbose,
-        use_file_parallel=use_file_parallel
+        use_file_parallel=use_file_parallel,
+        infinite_mode=args.infinite
     )
     
     try:

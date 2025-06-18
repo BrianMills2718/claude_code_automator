@@ -41,13 +41,14 @@ class CCAutomatorOrchestrator:
     def __init__(self, project_dir: Optional[Path] = None, resume: bool = False,
                  use_parallel: bool = True, use_docker: bool = False, use_visual: bool = True,
                  specific_milestone: Optional[int] = None, verbose: bool = False,
-                 use_file_parallel: bool = True):
+                 use_file_parallel: bool = True, infinite_mode: bool = False):
         self.project_dir = Path(project_dir) if project_dir else Path.cwd()
         self.resume = resume
         self.use_parallel = use_parallel and PARALLEL_AVAILABLE
         self.use_docker = use_docker and DOCKER_AVAILABLE
         self.use_visual = use_visual
         self.specific_milestone = specific_milestone
+        self.infinite_mode = infinite_mode
         self.verbose = verbose
         self.use_file_parallel = use_file_parallel
         
@@ -151,7 +152,7 @@ class CCAutomatorOrchestrator:
         print(f"✓ Found {len(self.milestones)} milestones")
         
         # Initialize phase orchestrator
-        self.orchestrator = PhaseOrchestrator(project_name, str(self.project_dir), verbose=self.verbose)
+        self.orchestrator = PhaseOrchestrator(project_name, str(self.project_dir), verbose=self.verbose, infinite_mode=self.infinite_mode)
         self.progress_tracker = ProgressTracker(self.project_dir, project_name)
         
         return True

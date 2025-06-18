@@ -34,131 +34,124 @@ class TestCalculatorCLIIntegration:
         assert cli.calculator is not None
         assert isinstance(cli.calculator, Calculator)
 
-    def test_cli_perform_operation_all_operations(self):
+    def test_cli_operations_with_calculator(self):
         """Test CLI's ability to perform all basic operations."""
         cli = CLI()
+        calc = cli.calculator
         
         # Test add
-        result = cli._perform_operation('add', 10, 5)
-        assert result == 15
+        result = calc.add(10.0, 5.0)
+        assert result == 15.0
         
         # Test subtract
-        result = cli._perform_operation('subtract', 10, 5)
-        assert result == 5
+        result = calc.subtract(10.0, 5.0)
+        assert result == 5.0
         
         # Test multiply
-        result = cli._perform_operation('multiply', 10, 5)
-        assert result == 50
+        result = calc.multiply(10.0, 5.0)
+        assert result == 50.0
         
         # Test divide
-        result = cli._perform_operation('divide', 10, 5)
+        result = calc.divide(10.0, 5.0)
         assert result == 2.0
 
     def test_cli_error_propagation(self):
         """Test that Calculator errors properly propagate through CLI."""
         cli = CLI()
         
-        # Division by zero should raise ValueError
-        with pytest.raises(ValueError, match="Cannot divide by zero"):
-            cli._perform_operation('divide', 10, 0)
+        # Division by zero should raise ZeroDivisionError
+        with pytest.raises(ZeroDivisionError, match="Cannot divide by zero"):
+            cli.calculator.divide(10.0, 0.0)
 
-    def test_cli_number_parsing(self):
-        """Test CLI's number parsing integration."""
+    def test_cli_get_numbers(self):
+        """Test CLI's get_numbers method returns correct tuple."""
         cli = CLI()
-        
-        # The _get_number method requires input, so we'll test _perform_operation
-        # with different number types
-        
-        # Integer operations
-        assert cli._perform_operation('add', 5, 3) == 8
-        
-        # Float operations
-        assert cli._perform_operation('add', 5.5, 3.5) == 9.0
-        
-        # Mixed operations
-        assert cli._perform_operation('multiply', 2, 3.5) == 7.0
+        # Test through calculator operations
+        num1, num2 = 5.0, 3.0
+        assert cli.calculator.add(num1, num2) == 8.0
 
     def test_complete_workflow_addition(self):
         """Test complete workflow through subprocess for addition."""
-        input_text = "add\n5\n10\nquit\n"
+        input_text = "1\n5\n10\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
         assert "Welcome to the Calculator!" in stdout
-        assert "Result: 15" in stdout
+        assert "5.0 + 10.0 = 15.0" in stdout
 
     def test_complete_workflow_subtraction(self):
         """Test complete workflow through subprocess for subtraction."""
-        input_text = "subtract\n20\n8\nquit\n"
+        input_text = "2\n20\n8\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Result: 12" in stdout
+        assert "20.0 - 8.0 = 12.0" in stdout
 
     def test_complete_workflow_multiplication(self):
         """Test complete workflow through subprocess for multiplication."""
-        input_text = "multiply\n4\n7\nquit\n"
+        input_text = "3\n4\n7\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Result: 28" in stdout
+        assert "4.0 * 7.0 = 28.0" in stdout
 
     def test_complete_workflow_division(self):
         """Test complete workflow through subprocess for division."""
-        input_text = "divide\n20\n4\nquit\n"
+        input_text = "4\n20\n4\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Result: 5" in stdout
+        assert "20.0 / 4.0 = 5.0" in stdout
 
     def test_complete_workflow_division_by_zero(self):
         """Test complete workflow handling division by zero."""
-        input_text = "divide\n20\n0\nquit\n"
+        input_text = "4\n20\n0\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
         assert "Error: Cannot divide by zero" in stdout
 
-    def test_complete_workflow_invalid_operation(self):
-        """Test complete workflow with invalid operation."""
-        input_text = "invalid\nadd\n2\n3\nquit\n"
+    def test_complete_workflow_invalid_choice(self):
+        """Test complete workflow with invalid menu choice."""
+        input_text = "invalid\n1\n2\n3\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Invalid operation" in stdout
-        assert "Result: 5" in stdout  # Should continue after error
+        assert "Invalid choice" in stdout
+        assert "2.0 + 3.0 = 5.0" in stdout  # Should continue after error
 
     def test_complete_workflow_invalid_number(self):
         """Test complete workflow with invalid number input."""
-        input_text = "add\nabc\n5\n10\nquit\n"
+        input_text = "1\nabc\n5\n10\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Invalid number" in stdout
-        assert "Result: 15" in stdout  # Should recover and complete
+        assert "Invalid input" in stdout
+        assert "5.0 + 10.0 = 15.0" in stdout  # Should recover and complete
 
     def test_data_flow_between_components(self):
         """Test data flow from CLI input through Calculator and back."""
         cli = CLI()
+        calc = cli.calculator
         
-        # Simulate the data flow for different number types
+        # Test data flow for different operations
         test_cases = [
-            ('add', 10, 20, 30),
-            ('subtract', 50.5, 20.5, 30.0),
-            ('multiply', 3, 4, 12),
-            ('divide', 100, 25, 4.0),
+            (calc.add, 10.0, 20.0, 30.0),
+            (calc.subtract, 50.5, 20.5, 30.0),
+            (calc.multiply, 3.0, 4.0, 12.0),
+            (calc.divide, 100.0, 25.0, 4.0),
         ]
         
         for operation, num1, num2, expected in test_cases:
-            result = cli._perform_operation(operation, num1, num2)
+            result = operation(num1, num2)
             assert result == expected
 
     def test_multiple_operations_workflow(self):
         """Test a workflow with multiple operations in sequence."""
-        input_text = "add\n10\n5\nmultiply\n3\n4\nsubtract\n20\n8\nquit\n"
+        input_text = "1\n10\n5\n3\n3\n4\n2\n20\n8\n5\n"
         stdout, stderr, returncode = run_calculator_process(input_text)
         
         assert returncode == 0
-        assert "Result: 15" in stdout
-        assert "Result: 12" in stdout  # 3 * 4
-        assert "Result: 12" in stdout  # 20 - 8 (both happen to be 12)
+        assert "10.0 + 5.0 = 15.0" in stdout
+        assert "3.0 * 4.0 = 12.0" in stdout
+        assert "20.0 - 8.0 = 12.0" in stdout

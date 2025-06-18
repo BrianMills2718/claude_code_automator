@@ -1,566 +1,402 @@
-# CLAUDE.md
+# CC_AUTOMATOR4 Implementation Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+**FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
-# CC_AUTOMATOR4: Advanced Orchestration with Simple Debugging
+## THE FUNDAMENTAL PURPOSE
 
-## Debugging Philosophy: KISS (Keep It Simple, Stupid) - For Debugging Only!
+**CC_AUTOMATOR4 EXISTS TO SOLVE ONE CRITICAL PROBLEM:**
 
-**CRITICAL CLARIFICATION**: KISS applies ONLY to debugging approach, NOT to system design. When something doesn't work, look for simple causes first (file permissions, existing files, path issues) before assuming complex architectural problems. The system itself should maintain ALL its sophisticated features.
+Claude Code agents routinely **LIE** about task completion. They claim "successfully implemented feature X" when they actually did nothing, created broken code, or only did part of the work. This happens constantly and is the core problem this system prevents.
 
-### What This System Really Is
+### The Anti-Cheating Philosophy
 
-CC_AUTOMATOR4 is a sophisticated orchestration system with FULL functionality:
-1. **Milestone Decomposition** - Breaking complex projects into achievable chunks
-2. **Nine-Phase Pipeline** - Research → Planning → Implementation → Testing → Commit
-3. **WebSearch Integration** - For up-to-date information in research phase
-4. **Context Flow** - Each phase builds on previous phase outputs
-5. **Intelligent Backtracking** - Agents can request earlier phases re-run
-6. **Evidence-Based Validation** - Concrete proof of success required
-7. **Cost Tracking** - Per-phase token usage monitoring
-8. **Session Management** - Resume/checkpoint functionality
-9. **Enhanced Error Recovery** - Retry mechanisms with context
+**CARDINAL RULE: NEVER TRUST AGENT CLAIMS WITHOUT CONCRETE PROOF**
 
-### The Simple Debugging Mindset
+Every single validation MUST be:
+- ✅ **Independent**: External tools verify success
+- ✅ **Concrete**: Specific files/outputs required
+- ✅ **Strict**: No "close enough" or "probably works"
+- ❌ **Never**: Trust what Claude says it did
 
-When something breaks, check SIMPLE causes first:
-```python
-# Example: Research phase not creating research.md
-# ❌ DON'T assume: "The async architecture is fundamentally broken"
-# ✅ DO check: "Is the path in the prompt matching the validation path?"
-# ✅ DO check: "Is WebSearch timing out due to geographic restrictions?"
-# ✅ DO check: "Does the milestone directory already exist with old files?"
+## Core System Architecture
+
+### Nine-Phase Pipeline
+```
+research → planning → implement → lint → typecheck → test → integration → e2e → commit
 ```
 
-### Current Issues Are Often Simple
+**Each phase MUST:**
+1. Create specific output files for validation
+2. Pass independent validation commands 
+3. Build on previous phase outputs
+4. Handle errors gracefully with evidence
+5. **NEVER be marked complete without concrete proof**
 
-1. **WebSearch timeouts** - Likely geographic restriction (US-only per SDK docs), not architecture
-2. **TaskGroup errors** - Probably tool timeouts, not fundamental async problems
-3. **File write errors** - Just existing files that need cleanup, not complex state issues
+### Evidence-Based Validation Philosophy
 
-### Root Cause of Write Errors & Fix
-**THE BUG**: When milestone files exist from previous runs, Claude tries to Write to them, gets "File has not been read yet" error, and retries infinitely.
-
-**THE FIX**: Automatically clean up milestone directories when starting fresh (not resuming).
+**NEVER TRUST AGENT CLAIMS** - Always verify with independent validation:
 
 ```python
-# In orchestrator.py line 269
-if self.current_phase_idx == 0:  # Starting fresh
-    milestone_dir = self.project_dir / ".cc_automator" / "milestones" / f"milestone_{milestone.number}"
-    if milestone_dir.exists():
-        shutil.rmtree(milestone_dir)
+# ✅ CORRECT: Independent validation
+def _validate_lint_phase():
+    result = subprocess.run(["flake8", "--select=F"], capture_output=True)
+    return result.returncode == 0
+
+# ❌ WRONG: Trust agent claims
+def _validate_lint_phase():
+    return "lint phase completed successfully" in agent_response
+
+# ❌ ABSOLUTELY WRONG: Accept "close enough"
+def _validate_e2e_phase():
+    if evidence_log_missing:
+        return main_py_runs_without_crash()  # THIS IS CHEATING!
 ```
 
-## High-Level Architecture (Vision)
+### Required Output Files by Phase
 
-### The Core Problem CC_AUTOMATOR4 Solves
+1. **research**: `milestone_N/research.md` (>100 chars)
+2. **planning**: `milestone_N/plan.md` (>50 chars)  
+3. **implement**: `main.py` OR `src/*.py` files
+4. **lint**: Zero F-errors from `flake8 --select=F`
+5. **typecheck**: Clean output from `mypy --strict`
+6. **test**: `pytest tests/unit` passes
+7. **integration**: `pytest tests/integration` passes
+8. **e2e**: `milestone_N/e2e_evidence.log` AND `python main.py` succeeds
+9. **commit**: Git commit created
 
-When you ask Claude Code to build something complex, it often:
-1. Claims success without actually completing the task
-2. Implements partial solutions that don't meet specifications
-3. Creates code that doesn't run or pass tests
-4. Loses context between different parts of the implementation
+## Critical Implementation Patterns
 
-### The Intelligent Solution
+### 1. Interactive Program Detection (E2E Phase)
 
-CC_AUTOMATOR4 orchestrates multiple Claude Code instances with:
+**PROBLEM**: Interactive programs hang during e2e validation without input.
 
-1. **Milestone Decomposition**: Breaking complex projects into achievable chunks
-   - "Build FastAPI app with auth" → Basic CRUD → Add Auth → Add UI
-
-2. **Nine-Phase Pipeline with Intelligence**:
-   - Research → Planning → Implementation → Lint → Typecheck → Test → Integration → E2E → Commit
-   - Each phase has a focused goal and can't self-validate
-   - Agents can request backtracking when they discover issues
-
-3. **Leveraging Agent Intelligence**:
-   - Agents assess their own success/failure with evidence
-   - Agents provide context for why they need to retry/backtrack
-   - System orchestrates based on agent feedback, not rigid rules
-
-4. **Evidence-Based Validation**:
-   - Simple file existence checks (research.md, plan.md)
-   - Command output verification (pytest passing, flake8 clean)
-   - No complex parsing - just "does the evidence exist?"
-
-### How It Should Work (Simple Implementation)
-
+**GENERALIST SOLUTION**:
 ```python
-# The entire system distilled to its essence
-async def run_milestone(milestone):
-    context = ""
-    for phase_name, prompt_template, expected_output in PHASES:
-        # Build prompt with context from previous phases
-        prompt = prompt_template.format(milestone=milestone, context=context)
-        
-        # Let Claude Code work with its full intelligence
-        result = await execute_phase(prompt)
-        
-        # Simple validation
-        if not Path(expected_output).exists():
-            # Let agent explain why it failed
-            context += f"\n{phase_name} failed: {result.explanation}"
-            if result.suggests_backtrack:
-                return "backtrack", result.backtrack_to
-            else:
-                return "retry", context
-        
-        # Accumulate context for next phase
-        context += f"\n{phase_name} completed: {result.summary}"
+def detect_interactive_program(file_path: Path) -> bool:
+    """Detect if a Python program requires user input."""
+    content = file_path.read_text()
+    return 'input(' in content or 'raw_input(' in content
+
+def get_common_exit_inputs() -> List[str]:
+    """Return common exit input patterns to try."""
+    return [
+        "q\n",           # Quit
+        "exit\n",        # Exit command  
+        "0\n",           # Zero (common exit option)
+        "\n" * 5,       # Multiple enters
+        "quit\n",       # Quit command
+        "bye\n",        # Goodbye
+    ]
+
+def test_interactive_program(file_path: Path, working_dir: Path) -> bool:
+    """Test interactive program with multiple input patterns."""
+    if not detect_interactive_program(file_path):
+        # Non-interactive, run directly
+        result = subprocess.run(["python", file_path.name], 
+                              cwd=working_dir, timeout=10)
+        return result.returncode == 0
     
-    return "success", context
+    # Try different exit patterns
+    for test_input in get_common_exit_inputs():
+        try:
+            result = subprocess.run(
+                ["python", file_path.name],
+                input=test_input,
+                capture_output=True,
+                text=True,
+                cwd=working_dir,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return True
+        except subprocess.TimeoutExpired:
+            continue  # Try next pattern
+    
+    return False  # No exit pattern worked
 ```
 
-### The Nine Phases (From PHASE_CONFIGS)
+**DO NOT** hardcode program-specific input sequences. Always use generalist patterns.
+
+### 2. SDK Bug Handling
+
+**KNOWN ISSUE**: TaskGroup errors with "error_during_execution" and "is_error": false
+
+**SOLUTION**: Check if work was actually completed despite SDK errors:
+```python
+if "TaskGroup" in str(error) and phase.status == PhaseStatus.RUNNING:
+    # Check if outputs exist despite SDK crash
+    if self._validate_phase_outputs(phase):
+        phase.status = PhaseStatus.COMPLETED
+        return success
+    else:
+        # Fall back to CLI execution
+        return self._execute_cli_fallback(phase)
+```
+
+### 3. Model Selection for Cost Optimization
+
+**MECHANICAL PHASES** (use Sonnet - 90% cost savings):
+- lint, typecheck
+
+**COMPLEX PHASES** (use Opus - better reasoning):  
+- research, planning, implement, test, integration, e2e, validate, commit
 
 ```python
-# From phase_orchestrator.py line 946
-PHASE_CONFIGS = [
-    1. research     → Analyze requirements and explore solutions (creates research.md)
-    2. planning     → Create detailed implementation plan (creates plan.md)
-    3. implement    → Build the solution (creates/modifies code files)
-    4. lint         → Fix code style issues - flake8 F-errors only
-    5. typecheck    → Fix type errors - mypy --strict must pass
-    6. test         → Fix unit tests - pytest tests/unit must pass
-    7. integration  → Fix integration tests - pytest tests/integration must pass
-    8. e2e          → Verify main.py runs successfully (creates e2e_evidence.log)
-    9. commit       → Create git commit with changes
-]
+def _select_model_for_phase(phase_name: str) -> Optional[str]:
+    # Check environment overrides first
+    if os.environ.get('FORCE_SONNET') == 'true':
+        return "claude-3-5-sonnet-20241022"
+    
+    # Default logic
+    if phase_name in ["lint", "typecheck"]:
+        return "claude-3-5-sonnet-20241022"  # Cost-effective
+    return None  # Use default (Opus)
 ```
 
-### Intelligent Phase Flow
+### 4. File Parallel Execution (Lint/Typecheck)
 
-- **Forward progress**: Each phase builds on previous phase outputs
-- **Smart retries**: Phases can retry with context about what failed
-- **Intelligent backtracking**: Later phases can request earlier phases re-run
-  - Example: Test phase discovers design flaw → backtrack to Planning
-  - Example: Implementation realizes research missed a requirement → backtrack to Research
-- **Evidence gates**: Can't proceed without concrete evidence (files, clean output)
+**PRINCIPLE**: Process multiple files concurrently for 11x speed improvement.
 
-## Usage
-
-```bash
-# SDK is now the default mode (uses Claude Max subscription)
-python cli.py --project /path/to/project
-
-# Resume from last checkpoint
-python cli.py --project /path/to/project --resume
-
-# Run specific milestone only
-python cli.py --project /path/to/project --milestone 2
-
-# Verbose mode to see details
-python cli.py --project /path/to/project --verbose
-```
-
-## Critical Validation Requirements
-
-**NEVER TRUST CLAUDE'S CLAIMS WITHOUT VERIFICATION**
-
-Every phase MUST provide evidence and pass independent validation:
-
-1. **Lint**: `flake8 --select=F` must return zero errors
-2. **Typecheck**: `mypy --strict` must pass
-3. **Test**: `pytest tests/unit` must pass
-4. **Integration**: `pytest tests/integration` must pass  
-5. **Research**: Must create research.md with >100 chars
-6. **Planning**: Must create plan.md with >50 chars
-7. **Implement**: Must create main.py or src/*.py files
-8. **E2E**: Must create e2e_evidence.log
-9. **Commit**: Must create actual git commit
-
-The `_validate_phase_outputs()` method enforces these requirements.
-
-## Current Status & Root Cause Analysis
-
-### What's Actually Happening
-
-1. **Research phase fails** - Claude doesn't create research.md
-2. **WebSearch hangs** - Possibly geographic restriction (US-only per SDK docs)  
-3. **TaskGroup errors** - Nested async contexts from over-engineered error handling
-4. **Complex prompts** - Too much instruction instead of trusting Claude
-
-### The Real Problem
-
-Current bugs are likely from SIMPLE issues being misdiagnosed:
-- Path mismatches between prompts and validation
-- Geographic restrictions on WebSearch (US-only)
-- Existing files causing "File not read" errors
-- Tool timeouts being interpreted as architectural flaws
-
-### Debugging Approach (Not System Simplification!)
-
-1. **First, check simple causes** - File paths, permissions, existing files
-2. **Test individual components** - Isolate what's actually failing
-3. **Keep ALL functionality** - Don't remove features, fix root causes
-
-## The Fix Plan: Debug Simple Issues First
-
-### Step 1: Diagnose Specific Failures
-Test individual components to find actual issues:
 ```python
-# test_websearch.py - Test if WebSearch works in your location
-from claude_code_sdk import query, ClaudeCodeOptions
-import asyncio
+# ✅ CORRECT: True parallel execution
+with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+    future_to_file = {
+        executor.submit(self.fix_file_errors, file_path, errors): file_path
+        for file_path, errors in errors_by_file.items()
+    }
+    
+    for future in as_completed(future_to_file):
+        result = future.result()
 
-async def test():
-    prompt = "Use WebSearch to find information about Python asyncio and write a summary to test.md"
-    async for msg in query(prompt=prompt, options=ClaudeCodeOptions(max_turns=5)):
-        print(msg)
-
-asyncio.run(test())
+# ❌ WRONG: Sequential processing
+for file_path, errors in errors_by_file.items():
+    self.fix_file_errors(file_path, errors)
 ```
 
-### Step 2: Fix Path and Validation Issues
-Common simple fixes that solve "complex" problems:
-- Ensure prompt paths match validation paths (relative vs absolute)
-- Clean up existing milestone directories before fresh runs
-- Check if WebSearch is available in your geographic location
-- Verify file permissions in project directory
+### 5. Iteration Until Success
 
-### Step 3: Maintain Full System Functionality
-Keep ALL features working:
-- All 9 phases remain active
-- WebSearch stays enabled (with geographic fallback if needed)
-- Context flow between phases
-- Intelligent backtracking
-- Evidence-based validation
-- Full error recovery mechanisms
+**PRINCIPLE**: Don't give up after one attempt. Iterate until clean or max attempts.
 
-## Testing
+```python
+max_iterations = 5
+iteration = 0
 
-```bash
-# Test with example project
-cd test_example/
-python ../cli.py --project . --verbose
-
-# Check logs for any errors
-cat .cc_automator/logs/*.log | grep "error"
-
-# Verify milestone files created
-ls -la .cc_automator/milestones/milestone_1/
+while iteration < max_iterations:
+    iteration += 1
+    
+    # Run validation
+    errors = self.find_errors()
+    if not errors:
+        return success  # Clean!
+    
+    # Fix errors in parallel
+    self.fix_errors_parallel(errors)
+    
+    if iteration == max_iterations:
+        return failure  # Give up
 ```
 
-## Key Benefits of Current Implementation
+## Testing Strategy
 
-1. **Context Preservation** ✅ - SDK maintains conversation history
-2. **No Infinite Loops** ✅ - Cleanup prevents write errors
-3. **Accurate Costs** ✅ - Per-phase cost tracking  
-4. **Session Management** ✅ - Resume/continue support
-5. **No API Key Required** ✅ - Uses Claude Max subscription
-6. **Validation Enforcement** ✅ - Catches false success claims
+### Unit Tests
+- Test individual functions/classes
+- Mock external dependencies 
+- Focus on logic correctness
 
-## Key Files and Code Structure
+### Integration Tests  
+- Test component interactions
+- Minimal mocking
+- Test file I/O, subprocess calls
 
-### Core Files
-- **`phase_orchestrator.py`** - Main SDK integration and phase execution
-  - Contains `PHASE_CONFIGS` (line 946) defining all 9 phases
-  - `_execute_with_sdk()` method handles SDK communication
-  - `_validate_phase_outputs()` enforces evidence requirements
-  
-- **`orchestrator.py`** - Main orchestration logic and milestone management
-  - Handles milestone decomposition and phase sequencing
-  - Contains directory cleanup fix (line 269)
-  - Manages resume/checkpoint functionality
-  
-- **`phase_prompt_generator.py`** - Generates prompts for each phase
-  - `_get_base_prompt()` has prompts for all 9 phases
-  - Recently fixed to use relative paths instead of absolute
-  
-- **`milestone_decomposer.py`** - Breaks projects into achievable milestones
-  - Uses LLM to intelligently decompose complex projects
-  - Creates milestone objects with success criteria
-  
-- **`cli.py`** - Command-line interface
-  - Entry point for running the automator
-  - Handles arguments like --resume, --milestone, --verbose
+### E2E Tests
+- NO mocking whatsoever
+- Test via main.py entry point
+- Must work like real user interaction
 
-### Directory Structure
-```
-.cc_automator/
-├── milestones/
-│   └── milestone_1/
-│       ├── research.md         # Created by research phase
-│       ├── plan.md            # Created by planning phase
-│       └── e2e_evidence.log   # Created by e2e phase
-├── checkpoints/               # Session state for resume
-├── logs/                      # Detailed execution logs
-└── evidence/                  # Phase execution evidence
+## Error Recovery Patterns
+
+### 1. Graceful Degradation
+```python
+try:
+    result = advanced_operation()
+except AdvancedError:
+    result = fallback_operation()  # Simpler approach
 ```
 
-## Current Implementation Status (December 2024)
-
-### What's Working ✅
-1. **Core Architecture** - 9-phase pipeline successfully prevents Claude from cheating/mocking
-2. **Validation Gates** - Evidence-based validation catches false success claims
-3. **Research/Planning** - Work ~50% of the time with smart recovery
-4. **Milestone Decomposition** - Effectively breaks complex projects into chunks
-5. **Context Flow** - Previous phase outputs properly passed to next phase
-6. **Error Recovery** - Smart TaskGroup error handling checks actual outputs
-
-### Root Cause Identified: SDK Bugs 🔍
-
-After extensive debugging, the issues are **NOT** in our code but in claude-code-sdk v0.0.10:
-
-#### 1. **JSON Parsing Bug** 
-- **Issue**: SDK can't parse CLI output containing certain characters (quotes, newlines)
-- **Error**: `json.decoder.JSONDecodeError: Unterminated string starting at...`
-- **Impact**: Causes TaskGroup async errors when JSON is malformed
-- **Evidence**: SDK has specific `CLIJSONDecodeError` class for this known issue
-
-#### 2. **Tool Filtering Bug**
-- **Issue**: `allowed_tools` parameter is completely ignored
-- **Evidence**: All tools always available regardless of configuration
-- **Impact**: Can't restrict problematic tool combinations
-
-#### 3. **Complex Prompt Sensitivity**
-- **Issue**: Simple prompts work fine, complex orchestrator prompts trigger JSON errors
-- **Evidence**: Our test scripts show clear pattern - complexity correlates with failures
-- **Impact**: Sophisticated prompts (the whole point of orchestration) cause crashes
-
-### SDK Issues Confirmed by Research 📚
-
-WebSearch found multiple users experiencing identical issues:
-- GitHub issues #771, #1611, #768, #467, #316 show widespread SDK problems
-- MCP servers fail to connect despite correct configuration
-- JSON parsing errors are common enough that SDK has dedicated error classes
-- TaskGroup errors are widely reported as symptom of underlying issues
-
-### Current Workarounds Implemented ✅
-
-1. **Smart Error Recovery**
-   - Detect TaskGroup errors and check if work was actually completed
-   - Continue execution when outputs exist despite SDK crashes
-   - Actual test execution to verify success vs failure
-
-2. **Interactive Program Detection** 
-   - E2E phase detects `input()` calls and provides test input
-   - Prevents infinite hangs on interactive programs
-
-3. **Flexible Validation**
-   - Accept files with similar names (research_CLAUDE.md → research.md)
-   - Focus on content existence, not exact naming
-
-4. **WebSearch Timeout Detection**
-   - 30-second timeout monitoring (though tool restriction doesn't work)
-
-### Strategic Solutions 🎯
-
-#### Short Term (Implemented)
-- **Error Recovery**: Continue when SDK fails but work was done
-- **Validation Flexibility**: Accept variations in output naming
-- **Smart Detection**: Handle interactive programs automatically
-
-#### Medium Term (Next Steps)
-1. **MCP Migration**: Use MCP servers for problematic tools
-   ```json
-   {
-     "mcpServers": {
-       "websearch": {
-         "command": "npx", 
-         "args": ["pskill9/web-search"]
-       },
-       "exa-search": {
-         "command": "npx",
-         "args": ["@exa-ai/exa-mcp-server"]
-       },
-       "kagi-search": {
-         "command": "npx", 
-         "args": ["@anthropic/kagi-search"]
-       },
-       "ref-docs": {
-         "command": "npx",
-         "args": ["@anthropic/ref"]
-       },
-       "github": {
-         "command": "npx",
-         "args": ["@anthropic/github"]
-       }
-     }
-   }
-   ```
-
-   **Priority MCP Replacements:**
-   - **WebSearch** → `pskill9/web-search` (no API keys, Google results)
-   - **Documentation** → `@anthropic/ref` (up-to-date coding docs)  
-   - **Code Context** → `juehang/vscode-mcp-server` (workspace awareness)
-   - **File Operations** → `wonderwhy-er/DesktopCommanderMCP` (swiss-army-knife)
-   - **Secure Execution** → `pydantic/pydantic-ai/mcp-run-python` (sandboxed Python)
-
-2. **Subprocess Fallback**: When SDK fails 3x, use direct CLI execution
-3. **Prompt Simplification**: Break complex prompts into smaller pieces
-
-#### Long Term
-- **SDK Updates**: Wait for anthropics/claude-code-sdk fixes
-- **Alternative SDK**: Consider building minimal wrapper around CLI
-- **Direct API**: Use Claude API directly for maximum control
-
-### Critical Insight 💡
-
-**The CC_AUTOMATOR4 architecture is fundamentally sound.** It successfully:
-- Prevents Claude from taking shortcuts on complex projects
-- Enforces evidence-based validation
-- Maintains context across phases
-- Handles backtracking and recovery
-
-The failures are entirely in the SDK integration layer, not the orchestration logic.
-
-## Revised Implementation Plan (December 2024)
-
-Based on our discovery that issues are SDK bugs, not architecture problems:
-
-### ✅ Phase 1: Completed (SDK Bug Workarounds)
-1. **Smart Error Recovery** - Continue when SDK fails but work was done
-2. **Interactive Program Detection** - E2E handles `input()` calls automatically  
-3. **Flexible Validation** - Accept research_CLAUDE.md, plan_CLAUDE.md variations
-4. **WebSearch Timeout Detection** - Monitor for hangs (though can't prevent them)
-
-### 🚧 Phase 2: SDK Alternatives (In Progress)
-1. **MCP Migration Priority List**
-   - WebSearch → `@modelcontextprotocol/server-websearch`
-   - File operations → Local MCP servers
-   - Git operations → Git MCP server
-   - Test other tools via MCP to avoid SDK JSON parsing
-
-2. **Subprocess Fallback System**
-   ```python
-   # When SDK fails 3x in a row
-   if sdk_failure_count >= 3:
-       result = subprocess.run([
-           "claude", "--output-format", "json", 
-           "--prompt", simplified_prompt
-       ], capture_output=True)
-   ```
-
-3. **Prompt Simplification Strategy**
-   - Break complex prompts into 2-3 simpler messages
-   - Reduce context size that might trigger JSON parsing bugs
-   - Use conversation flow instead of single large prompts
-
-### 🔄 Phase 3: Reliability Improvements  
-1. **Sub-phase Implementation** (For phases >5 min)
-   - Research: analyze → explore → document
-   - Implementation: structure → core → interfaces → integration
-   - Testing: unit → integration → e2e
-
-2. **Circuit Breaker Pattern**
-   ```python
-   if consecutive_failures > threshold:
-       switch_to_fallback_mode()
-   ```
-
-3. **MCP Health Monitoring**
-   - Check MCP server connectivity before phases
-   - Graceful degradation when servers unavailable
-
-### Core Principles (Unchanged) 🎯
-- ✅ **All 9 phases remain** - The architecture prevents cheating
-- ✅ **Full tool access** - Don't restrict Claude's capabilities  
-- ✅ **Evidence-based validation** - Verify actual outputs, not claims
-- ✅ **Context preservation** - Each phase builds on previous work
-- ✅ **Intelligent backtracking** - Handle failures gracefully
-
-### Success Metrics 📊
-- **Current**: ~50% success rate on simple projects
-- **Target**: >90% success rate on complex 8+ hour projects
-- **Method**: SDK bug workarounds + MCP migration + fallback systems
-
-The goal: Maintain sophisticated orchestration while working around SDK limitations.
-
-## Milestone Decomposition Process
-
-The system automatically breaks complex projects into milestones:
-
-1. **Input**: Project description (e.g., "Build expense tracker with categories")
-2. **Decomposer**: Uses LLM to create logical milestones
-3. **Output**: List of milestones with:
-   - Name and description
-   - Success criteria
-   - Dependencies on previous milestones
-
-Example decomposition:
-```
-Project: "FastAPI CRUD with authentication"
-→ Milestone 1: Basic CRUD API
-→ Milestone 2: Add database persistence  
-→ Milestone 3: Add JWT authentication
-→ Milestone 4: Add user management
+### 2. Evidence Collection
+```python
+def attempt_phase(phase):
+    try:
+        execute_phase(phase)
+    except Exception as e:
+        # Always check if work was actually done
+        if outputs_exist(phase):
+            return success_with_warning(e)
+        else:
+            return failure(e)
 ```
 
-## Important Notes
+### 3. Intelligent Validation Feedback & Retry
+```python
+def validate_with_feedback(phase):
+    if basic_validation_passes(phase):
+        return {"success": True}
+    
+    # Generate specific feedback about what failed
+    feedback = generate_specific_feedback(phase)
+    
+    # Attempt retry with targeted feedback
+    retry_success = retry_phase_with_feedback(phase, feedback)
+    
+    return {"success": retry_success, "feedback": feedback}
 
-- SDK mode is default (USE_CLAUDE_SDK=true)
-- Milestone directories cleaned on fresh starts
-- Validation may catch failures - this is good!
-- Each phase has specific output requirements
-- Logs saved in .cc_automator/logs/
-- WebSearch may timeout due to geographic restrictions
+def generate_specific_feedback(phase):
+    if phase.name == "e2e":
+        if missing_evidence_log():
+            return "Missing required evidence log file. You must create: milestone_N/e2e_evidence.log"
+        elif main_py_execution_failed():
+            return "Evidence log exists but main.py execution test failed"
+    # ... specific feedback for each phase type
+```
 
-## Troubleshooting Guide 🔧
+### 4. The Feedback Loop That Was Missing
+The original system had a critical gap:
+1. ✅ Detect validation failure
+2. ❌ **NO specific feedback about what was wrong**
+3. ❌ **NO retry with targeted guidance**  
+4. ❌ **NO learning from the failure**
 
-### Common Error Patterns
+The enhanced system now:
+1. ✅ Detect validation failure
+2. ✅ **Generate specific feedback about missing files/outputs**
+3. ✅ **Retry with targeted prompt explaining exactly what to fix**
+4. ✅ **Re-validate after retry to confirm fix**
 
-#### "TaskGroup: unhandled errors" 
-- **Cause**: SDK JSON parsing bug, not orchestration issue
-- **Action**: Check if phase outputs exist despite error
-- **Fix**: Error recovery system handles this automatically
+## Prompt Engineering Principles
 
-#### "CLIJSONDecodeError: Unterminated string"
-- **Cause**: Claude output contains characters that break JSON parsing
-- **Action**: This is an SDK bug, not fixable by us
-- **Workaround**: Retry with simpler prompt or use subprocess fallback
+### 1. Be Specific About Outputs
+```python
+# ✅ GOOD: Specific file requirements
+prompt = f"""
+Create research.md in {milestone_dir}/research.md with:
+- Current codebase analysis (what exists)
+- Requirements for {milestone.description}  
+- Implementation approach
+- Testing strategy
 
-#### Phase hangs for >10 minutes
-- **Cause**: Interactive program (main.py with input()) or WebSearch timeout
-- **Action**: Check if main.py has `input()` calls
-- **Fix**: E2E detection handles this automatically
+File must be >100 characters.
+"""
 
-#### "allowed_tools parameter ignored"
-- **Cause**: Known SDK bug - tool filtering doesn't work
-- **Action**: Accept that all tools are always available
-- **Workaround**: Use prompts to discourage problematic tools
+# ❌ BAD: Vague requirements  
+prompt = "Research the requirements and create documentation."
+```
 
-### Debugging Steps
+### 2. Provide Context Flow
+```python
+prompt = f"""
+PREVIOUS PHASES:
+Research: {research_summary}
+Planning: {plan_summary}
 
-1. **Check logs**: `.cc_automator/logs/[phase]_[timestamp].log`
-2. **Verify outputs**: Look for created files despite errors
-3. **Test manually**: Run simple SDK query to isolate issue
-4. **Check MCP**: Use `claude mcp list` to verify server status
+YOUR TASK: Implement {milestone.description}
+Focus on the plan above and research findings.
+"""
+```
 
-### When to Report Issues
+### 3. Include Validation Criteria
+```python
+prompt = f"""
+SUCCESS CRITERIA:
+- All flake8 F-errors fixed: `flake8 --select=F` returns 0
+- Files must be syntactically valid Python
+- Don't break existing functionality
 
-**Report to SDK team** (not us):
-- JSON parsing errors
-- TaskGroup async errors  
-- Tool filtering not working
-- MCP server connectivity issues
+CURRENT ERRORS:
+{error_list}
+"""
+```
 
-**Work on in automator**:
-- Phase logic improvements
-- Validation enhancements
-- New milestone patterns
-- Performance optimizations
+## Common Anti-Patterns to Avoid
 
-## For Claude Code Agents
+### ❌ The DEADLY Sin: Accepting "Close Enough"
+```python
+# ABSOLUTELY FORBIDDEN: Weakening validation requirements
+def validate_e2e():
+    required_files = find_evidence_logs()
+    if not required_files:
+        # ❌ NEVER DO THIS - this is exactly what Claude wants!
+        return test_main_py_directly()  # This defeats the entire purpose!
+    return True
 
-When working on this codebase:
-1. **Always validate outputs** - Don't trust claims, verify with subprocess
-2. **Create required files** - Each phase has specific file requirements
-3. **Show evidence** - Include command outputs that prove success
-4. **Handle existing files** - Check if files exist before writing
-5. **Use absolute paths** - Avoid relative path issues
-6. **Remember context** - Previous phases create files you might need
-7. **KEEP ALL FUNCTIONALITY** - Do not disable tools like WebSearch, Context7, or MCP. These are essential features. SDK bugs are not reasons to reduce functionality.
-8. **Trust the recovery system** - TaskGroup errors are handled automatically
+# ✅ CORRECT: Strict validation only
+def validate_e2e():
+    required_files = find_evidence_logs()
+    return len(required_files) > 0  # Evidence required, no exceptions
+```
 
-## File Write/Edit Guidelines
+### ❌ Trusting Agent Claims
+```python
+# WRONG: Believing what Claude says
+if "successfully completed" in response:
+    return success
+```
 
-**IMPORTANT**: Claude Code has a safety feature:
-- **Write tool**: Only for NEW files (or after reading existing ones)
-- **Edit tool**: For modifying EXISTING files
-- If you get "File has not been read yet", either:
-  1. Read the file first, then Write
-  2. Use Edit instead of Write
-  3. Check if the file should be deleted first
+### ❌ Hardcoded Solutions  
+```python
+# WRONG: Project-specific logic
+if "calculator" in project_name:
+    test_input = "1\n10\n5\n8\n"
+```
 
-This prevents accidental data loss but can cause confusion if not understood.
+### ❌ Complex Validation Logic
+```python
+# WRONG: Parsing complex outputs
+def validate_tests():
+    output = run_tests()
+    parsed = parse_pytest_output(output)  # Complex!
+    return analyze_test_results(parsed)   # Fragile!
+
+# RIGHT: Simple validation
+def validate_tests():
+    result = subprocess.run(["pytest", "tests/unit"])
+    return result.returncode == 0  # Simple!
+```
+
+### ❌ Disabling Features Due to Bugs
+```python
+# WRONG: Remove functionality
+def execute_phase(phase):
+    # Disable WebSearch due to SDK bug
+    phase.allowed_tools.remove("WebSearch")
+
+# RIGHT: Work around bugs  
+def execute_phase(phase):
+    try:
+        return execute_with_websearch(phase)
+    except SDKBug:
+        return execute_without_websearch(phase)
+```
+
+## Key Success Metrics
+
+1. **Validation Independence**: Each phase validated by external tools
+2. **Evidence Collection**: Concrete proof files created  
+3. **Cost Efficiency**: Sonnet for mechanical, Opus for complex
+4. **Speed Optimization**: Parallel execution where beneficial
+5. **Error Recovery**: Continue despite SDK bugs
+6. **Generalist Design**: Works across different project types
+
+## Implementation Checklist
+
+When implementing any cc_automator4 feature:
+
+- [ ] Does it work for ANY project type? (not just current one)
+- [ ] Does it have independent validation? (not trust agent claims)  
+- [ ] Does it handle SDK bugs gracefully?
+- [ ] Does it optimize costs appropriately?
+- [ ] Does it collect concrete evidence?
+- [ ] Does it follow the nine-phase pipeline?
+- [ ] Does it support parallel execution where beneficial?
+- [ ] Does it iterate until success or max attempts?
+
+**Remember**: The goal is a robust, generalist system that prevents Claude from taking shortcuts while optimizing for speed and cost.

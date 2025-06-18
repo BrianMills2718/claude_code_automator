@@ -174,10 +174,14 @@ Write to it: PHASE_COMPLETE
                 return {"status": "skipped", "file": file_path, "reason": "File not found"}
             
             # Create a phase for this file
+            # We need to specify allowed_tools for lint/typecheck phases
+            allowed_tools = ["Read", "Edit", "Bash"] if fix_type == "lint" else ["Read", "Edit", "Bash"]
+            
             phase = create_phase(
                 name=f"{fix_type}_{Path(file_path).stem}",
                 description=f"Fix {fix_type} errors in {file_path}",
-                prompt=prompt
+                prompt=prompt,
+                allowed_tools=allowed_tools
             )
             
             # Use shorter timeout for file-level fixes
@@ -185,7 +189,25 @@ Write to it: PHASE_COMPLETE
             phase.max_turns = 10  # Fewer turns needed for focused fixes
             
             # Execute the fix
-            result = orchestrator.execute_phase(phase)
+            print(f"  DEBUG: About to call orchestrator.execute_phase")
+            print(f"  DEBUG: phase.name = {phase.name}")
+            print(f"  DEBUG: phase.allowed_tools = {phase.allowed_tools}")
+            print(f"  DEBUG: type(phase.allowed_tools) = {type(phase.allowed_tools)}")
+            
+            try:
+                result = orchestrator.execute_phase(phase)
+            except TypeError as te:
+                if "join" in str(te):
+                    print(f"  🔍 JOIN ERROR CAUGHT!")
+                    print(f"  Error: {te}")
+                    import traceback
+                    print(f"  Full traceback:")
+                    traceback.print_exc()
+                    print(f"  Phase details:")
+                    print(f"    - name: {phase.name}")
+                    print(f"    - allowed_tools: {phase.allowed_tools}")
+                    print(f"    - all attributes: {vars(phase)}")
+                raise
             
             return {
                 "status": "completed" if phase.status == PhaseStatus.COMPLETED else "failed",
@@ -196,6 +218,20 @@ Write to it: PHASE_COMPLETE
                 "error": phase.error
             }
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"  💥 Detailed error for {file_path}:")
+            print(f"     Error: {e}")
+            print(f"     Type: {type(e).__name__}")
+            print(f"     Full traceback:")
+            print(error_details)
+            
+            # Additional debugging for join errors
+            if "join" in str(e).lower():
+                print(f"     DEBUG: This appears to be a join error")
+                print(f"     Phase allowed_tools: {phase.allowed_tools}")
+                print(f"     Type of allowed_tools: {type(phase.allowed_tools)}")
+            
             return {
                 "status": "failed",
                 "file": file_path,
@@ -264,7 +300,10 @@ Write to it: PHASE_COMPLETE
                             print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
                             
                     except Exception as e:
+                        import traceback
                         print(f"  ❌ Error fixing {file_path}: {e}")
+                        print(f"     Error type: {type(e).__name__}")
+                        print(f"     Traceback: {traceback.format_exc()}")
                         result = {
                             "status": "failed",
                             "file": file_path,
@@ -356,7 +395,10 @@ Write to it: PHASE_COMPLETE
                             print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
                             
                     except Exception as e:
+                        import traceback
                         print(f"  ❌ Error fixing {file_path}: {e}")
+                        print(f"     Error type: {type(e).__name__}")
+                        print(f"     Traceback: {traceback.format_exc()}")
                         result = {
                             "status": "failed",
                             "file": file_path,

@@ -1,6 +1,7 @@
 # Core dependencies
 anyio>=4.0.0
 claude-code-sdk>=0.0.10
+fastmcp>=2.8.1
 
 # Testing and validation
 pytest>=7.0.0

@@ -1,42 +1,30 @@
 {
   "mcpServers": {
-    "context7": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@upstash/context7-mcp@latest"
-      ]
-    },
-    "filesystem": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-filesystem"],
-      "description": "File system operations - read, write, list directories"
-    },
-    "brave-search": {
-      "command": "npx",
-      "args": ["@modelcontextprotocol/server-brave-search"],
-      "description": "Web search using Brave Search API (requires API key)"
+    "cc-automator-tools": {
+      "command": "python",
+      "args": ["mcp_server.py"],
+      "description": "Safe tools for CC_AUTOMATOR4 - prevents TaskGroup errors"
     }
   },
   "phases": {
     "research": {
-      "preferred_mcps": ["brave-search", "context7"],
-      "fallback_tools": ["WebSearch", "WebFetch"]
+      "preferred_mcps": ["cc-automator-tools"],
+      "fallback_tools": ["Read", "Write"]
     },
     "planning": {
-      "preferred_mcps": ["filesystem", "context7"],
-      "fallback_tools": ["Read"]
+      "preferred_mcps": ["cc-automator-tools"],
+      "fallback_tools": ["Read", "Write"]
     },
     "implement": {
-      "preferred_mcps": ["filesystem"],
+      "preferred_mcps": ["cc-automator-tools"],
       "fallback_tools": ["Read", "Write", "Edit", "MultiEdit"]
     },
     "test": {
-      "preferred_mcps": ["filesystem"],
+      "preferred_mcps": ["cc-automator-tools"],
       "fallback_tools": ["Bash"]
     },
     "integration": {
-      "preferred_mcps": ["filesystem"],
+      "preferred_mcps": ["cc-automator-tools"],
       "fallback_tools": ["Bash"]
     }
   },

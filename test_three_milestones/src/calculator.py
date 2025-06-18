@@ -1,29 +1,23 @@
 """Calculator class with basic arithmetic operations."""
 
-from typing import Union
-
 
 class Calculator:
     """A calculator that performs basic arithmetic operations."""
 
-    @staticmethod
-    def add(a: Union[int, float], b: Union[int, float]) -> Union[int, float]:
+    def add(self, a: float, b: float) -> float:
         """Add two numbers."""
         return a + b
 
-    @staticmethod
-    def subtract(a: Union[int, float], b: Union[int, float]) -> Union[int, float]:
+    def subtract(self, a: float, b: float) -> float:
         """Subtract b from a."""
         return a - b
 
-    @staticmethod
-    def multiply(a: Union[int, float], b: Union[int, float]) -> Union[int, float]:
+    def multiply(self, a: float, b: float) -> float:
         """Multiply two numbers."""
         return a * b
 
-    @staticmethod
-    def divide(a: Union[int, float], b: Union[int, float]) -> Union[int, float]:
+    def divide(self, a: float, b: float) -> float:
         """Divide a by b."""
         if b == 0:
-            raise ValueError("Cannot divide by zero")
+            raise ZeroDivisionError("Cannot divide by zero")
         return a / b

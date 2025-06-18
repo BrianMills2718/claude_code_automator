@@ -1,0 +1,12 @@
+fastapi>=0.68.0
+uvicorn>=0.15.0
+networkx>=2.6.3
+langchain>=0.0.139
+sentence-transformers>=2.2.2
+numpy>=1.21.0
+pydantic>=1.8.2
+pytest>=6.2.5
+mypy>=0.910
+flake8>=3.9.0
+click>=8.0.1
+matplotlib>=3.4.3

@@ -338,11 +338,43 @@ echo "abc + def" | python main.py
 echo "5 / 0" | python main.py
 ```
 
-### Evidence Required:
-1. Show main.py running successfully (with appropriate input method)
-2. Demonstrate each success criterion working
-3. Include example inputs and outputs
-4. Save full session log to: .cc_automator/milestones/milestone_{milestone.number}/e2e_evidence.log
+### CRITICAL REQUIREMENT - CREATE EVIDENCE LOG:
+
+**YOU MUST CREATE THIS FILE OR THE PHASE WILL FAIL:**
+`.cc_automator/milestones/milestone_{milestone.number}/e2e_evidence.log`
+
+Steps to create evidence log:
+1. Run all your e2e tests and capture the outputs
+2. Use the Write tool to create the evidence log file
+3. Include in the log:
+   - All command outputs from testing main.py
+   - Success/failure status for each test
+   - Verification of each success criterion
+   - Any error messages encountered
+
+Example evidence log content:
+```
+E2E Testing Session for Milestone {milestone.number}
+===========================================
+
+Test 1: Basic functionality
+$ python main.py
+[include actual output here]
+Status: ✓ PASSED
+
+Test 2: Error handling  
+$ python main.py
+[include actual output here]
+Status: ✓ PASSED
+
+SUCCESS CRITERIA VERIFICATION:
+- Criterion 1: ✓ VERIFIED
+- Criterion 2: ✓ VERIFIED
+
+CONCLUSION: All tests passed successfully.
+```
+
+**VALIDATION WILL FAIL WITHOUT THIS FILE** - the system requires concrete proof of testing!
 
 **IMPORTANT:** Never run interactive programs without providing input - they will hang forever!
 
