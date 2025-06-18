@@ -5,6 +5,7 @@ Manages milestone and phase execution
 """
 
 import json
+import os
 import time
 from pathlib import Path
 from datetime import datetime
@@ -20,6 +21,8 @@ from output_filter import OutputFilter
 from file_parallel_executor import FileParallelExecutor
 from parallel_assessment_agent import ParallelAssessmentAgent
 from progress_display import ProgressDisplay
+from dependency_analyzer import analyze_project_dependencies, DependencyAnalysis
+from docker_orchestrator import DockerOrchestrator
 
 # Optional Phase 4 imports
 try:
@@ -52,6 +55,10 @@ class CCAutomatorOrchestrator:
         self.verbose = verbose
         self.use_file_parallel = use_file_parallel
         
+        # Dependency and Docker management
+        self.dependency_analysis: Optional[DependencyAnalysis] = None
+        self.docker_orchestrator = DockerOrchestrator(self.project_dir, verbose=verbose)
+        
         # Initialize components
         self.orchestrator = None
         self.parallel_executor = None
@@ -74,7 +81,7 @@ class CCAutomatorOrchestrator:
         """Run the complete automation process"""
         
         print("=" * 60)
-        print("CC_AUTOMATOR3 - Autonomous Code Generation")
+        print("CC_AUTOMATOR4 - Autonomous Code Generation")
         print("=" * 60)
         print()
         
@@ -86,18 +93,30 @@ class CCAutomatorOrchestrator:
         if not self._load_project_config():
             return 1
             
-        # Step 3: Initialize or resume progress
+        # Step 3: Pre-flight dependency analysis
+        if not self._analyze_dependencies():
+            return 1
+            
+        # Step 4: Docker setup (if needed)
+        if self.use_docker or self._requires_docker():
+            if not self._setup_docker_services():
+                return 1
+            
+        # Step 5: Initialize or resume progress
         if not self._initialize_progress():
             return 1
             
-        # Step 3.5: Initialize optional components
+        # Step 6: Initialize optional components
         self._initialize_optional_components()
             
-        # Step 4: Execute milestones
+        # Step 7: Execute milestones
         success = self._execute_milestones()
         
-        # Step 5: Generate final report
+        # Step 8: Generate final report
         self._generate_final_report()
+        
+        # Cleanup
+        self._cleanup_docker_services()
         
         return 0 if success else 1
         
@@ -159,7 +178,7 @@ class CCAutomatorOrchestrator:
         
     def _initialize_progress(self) -> bool:
         """Initialize or resume progress"""
-        print("\nStep 3: Initializing progress tracking...")
+        print("\nStep 5: Initializing progress tracking...")
         
         # Add all milestones to tracker
         for milestone in self.milestones:
@@ -189,6 +208,85 @@ class CCAutomatorOrchestrator:
             
         return True
         
+    def _analyze_dependencies(self) -> bool:
+        """Analyze project dependencies and setup requirements"""
+        print("\nStep 3: Analyzing dependencies...")
+        
+        try:
+            # Run dependency analysis
+            self.dependency_analysis = analyze_project_dependencies(self.project_dir)
+            
+            # Report findings
+            if self.dependency_analysis.api_keys:
+                print(f"✓ Found {len(self.dependency_analysis.api_keys)} required API keys")
+                for api_key in self.dependency_analysis.api_keys:
+                    print(f"  - {api_key.name}: {api_key.description}")
+            
+            if self.dependency_analysis.services:
+                print(f"✓ Found {len(self.dependency_analysis.services)} required services")
+                for service in self.dependency_analysis.services:
+                    print(f"  - {service.name}: {service.description}")
+            
+            # Validate API keys are set
+            missing_keys = []
+            for api_key in self.dependency_analysis.api_keys:
+                if not os.environ.get(api_key.name):
+                    missing_keys.append(api_key.name)
+            
+            if missing_keys:
+                print(f"\n❌ Missing required API keys: {', '.join(missing_keys)}")
+                print("Please set these environment variables before continuing.")
+                print("See DEPENDENCIES.md for setup instructions.")
+                return False
+            
+            print("✓ All dependencies validated")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Dependency analysis failed: {e}")
+            return False
+    
+    def _requires_docker(self) -> bool:
+        """Check if project requires Docker services"""
+        return (self.dependency_analysis and 
+                len(self.dependency_analysis.services) > 0)
+    
+    def _setup_docker_services(self) -> bool:
+        """Setup Docker services for the project"""
+        print("\nStep 4: Setting up Docker services...")
+        
+        try:
+            success = self.docker_orchestrator.setup_project_containers()
+            if success:
+                # Get connection info for services
+                connection_info = self.docker_orchestrator.get_service_connection_info()
+                if connection_info:
+                    print("✓ Services available at:")
+                    for service, info in connection_info.items():
+                        print(f"  - {service}: {info['host']}:{info['port']}")
+                
+                # Validate security configuration
+                security_checks = self.docker_orchestrator.validate_security_configuration()
+                security_score = sum(security_checks.values())
+                print(f"✓ Security score: {security_score}/{len(security_checks)} checks passed")
+                
+            return success
+            
+        except Exception as e:
+            print(f"❌ Docker setup failed: {e}")
+            return False
+    
+    def _cleanup_docker_services(self) -> None:
+        """Clean up Docker services after execution"""
+        if self.use_docker and self.docker_orchestrator:
+            try:
+                if self.verbose:
+                    print("\nCleaning up Docker services...")
+                self.docker_orchestrator.stop_project_containers()
+            except Exception as e:
+                if self.verbose:
+                    print(f"⚠️  Docker cleanup warning: {e}")
+        
     def _initialize_optional_components(self):
         """Initialize Phase 4 components if available"""
         if self.use_parallel and PARALLEL_AVAILABLE:
@@ -205,7 +303,7 @@ class CCAutomatorOrchestrator:
     
     def _execute_milestones(self) -> bool:
         """Execute all milestones"""
-        print("\nStep 4: Executing milestones...")
+        print("\nStep 7: Executing milestones...")
         print("=" * 60)
         
         total_start_time = datetime.now()
@@ -424,7 +522,7 @@ class CCAutomatorOrchestrator:
         
     def _generate_final_report(self):
         """Generate final execution report"""
-        print("\nStep 5: Generating final report...")
+        print("\nStep 8: Generating final report...")
         
         report = self.progress_tracker.create_summary_report()
         report_file = self.project_dir / ".cc_automator" / "final_report.md"
