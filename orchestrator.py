@@ -213,11 +213,21 @@ class CCAutomatorOrchestrator:
         print("\nStep 3: Analyzing dependencies...")
         
         try:
-            # Run interactive dependency analysis
-            from dependency_analyzer import DependencyAnalyzer
-            analyzer = DependencyAnalyzer(self.project_dir, interactive=True)
-            self.dependency_analysis = analyzer.analyze()
-            analyzer.save_analysis(self.dependency_analysis)
+            # Use intelligent project discovery if available, otherwise use old system
+            discovery_file = self.project_dir / ".cc_automator" / "project_discovery.json"
+            
+            if discovery_file.exists():
+                print("✓ Using intelligent project discovery...")
+                self.dependency_analysis = self._load_discovery_analysis(discovery_file)
+                # Save analysis for Docker orchestrator
+                self._save_analysis_for_docker(self.dependency_analysis)
+            else:
+                print("⚠️  No project discovery found, using basic dependency analysis...")
+                # Fall back to old system
+                from dependency_analyzer import DependencyAnalyzer
+                analyzer = DependencyAnalyzer(self.project_dir, interactive=True)
+                self.dependency_analysis = analyzer.analyze()
+                analyzer.save_analysis(self.dependency_analysis)
             
             # Report findings
             if self.dependency_analysis.api_keys:
@@ -289,6 +299,158 @@ class CCAutomatorOrchestrator:
             except Exception as e:
                 if self.verbose:
                     print(f"⚠️  Docker cleanup warning: {e}")
+    
+    def _load_discovery_analysis(self, discovery_file: Path):
+        """Load intelligent project discovery and convert to dependency analysis format"""
+        
+        with open(discovery_file, 'r') as f:
+            discovery_data = json.load(f)
+        
+        # Import the dependency analysis structure
+        from dependency_analyzer import DependencyAnalysis, ExternalDependency
+        
+        # Convert discovery to dependency analysis format
+        analysis = DependencyAnalysis()
+        
+        # Convert final dependencies to the expected format
+        for dep in discovery_data.get("final_dependencies", []):
+            dependency = ExternalDependency(
+                name=dep.get("approach", dep.get("requirement", "")),
+                type=dep.get("type", "unknown"),
+                description=dep.get("description", ""),
+                required=True
+            )
+            
+            # Add specific dependency based on type
+            if dep.get("type") == "api" and "api_key_needed" in dep:
+                dependency.name = dep["api_key_needed"]
+                dependency.type = "api_key"
+                dependency.setup_instructions = [
+                    f'export {dep["api_key_needed"]}="your-api-key-here"',
+                    f'# {dep["description"]}'
+                ]
+                dependency.validation_command = f'test -n "${dep["api_key_needed"]}"'
+                analysis.api_keys.append(dependency)
+                
+            elif dep.get("type") == "service" and "docker_service" in dep:
+                dependency.name = dep["docker_service"]
+                dependency.type = "service"
+                dependency.docker_service = dep["docker_service"]
+                analysis.services.append(dependency)
+                
+            elif dep.get("type") == "library" and "pip_package" in dep:
+                dependency.name = dep["pip_package"]
+                dependency.type = "command"
+                analysis.commands.append(dependency)
+        
+        # Generate Docker services if needed
+        if analysis.services:
+            analysis.docker_services = {}
+            for service in analysis.services:
+                if service.docker_service:
+                    analysis.docker_services[service.docker_service] = {
+                        "image": f"{service.docker_service}:latest",
+                        "restart": "unless-stopped",
+                        "networks": ["cc_automator_network"],
+                        "security_opt": ["no-new-privileges:true"]
+                    }
+        
+        return analysis
+    
+    def _save_analysis_for_docker(self, analysis):
+        """Save analysis in format Docker orchestrator expects"""
+        
+        cc_dir = self.project_dir / ".cc_automator"
+        cc_dir.mkdir(exist_ok=True)
+        dependencies_file = cc_dir / "dependencies.json"
+        
+        # Convert analysis to Docker orchestrator format
+        analysis_data = {
+            "services": [
+                {
+                    "name": service.name,
+                    "description": service.description,
+                    "docker_service": service.docker_service or service.name
+                }
+                for service in analysis.services
+            ],
+            "api_keys": [
+                {
+                    "name": key.name,
+                    "description": key.description
+                }
+                for key in analysis.api_keys
+            ]
+        }
+        
+        with open(dependencies_file, 'w') as f:
+            json.dump(analysis_data, f, indent=2)
+        
+        # Also generate docker-compose.yml if we have services
+        if analysis.services:
+            self._generate_docker_compose(analysis)
+    
+    def _generate_docker_compose(self, analysis):
+        """Generate docker-compose.yml from intelligent discovery"""
+        
+        compose_content = {
+            "version": "3.8",
+            "services": {},
+            "networks": {
+                "cc_automator_network": {
+                    "driver": "bridge",
+                    "internal": False
+                }
+            },
+            "volumes": {}
+        }
+        
+        # Add services from intelligent discovery
+        for service in analysis.services:
+            service_name = service.docker_service or service.name
+            
+            # Generate appropriate Docker configuration based on service type
+            if "neo4j" in service_name.lower():
+                compose_content["services"][service_name] = {
+                    "image": "neo4j:5.11",
+                    "restart": "unless-stopped",
+                    "ports": ["7474:7474", "7687:7687"],
+                    "environment": [
+                        "NEO4J_AUTH=neo4j/password",
+                        "NEO4J_PLUGINS=[\"apoc\"]",
+                        "NEO4J_dbms_security_procedures_unrestricted=apoc.*"
+                    ],
+                    "networks": ["cc_automator_network"],
+                    "security_opt": ["no-new-privileges:true"],
+                    "volumes": [f"{service_name}_data:/data"]
+                }
+                compose_content["volumes"][f"{service_name}_data"] = {}
+                
+            elif "chroma" in service_name.lower():
+                compose_content["services"][service_name] = {
+                    "image": "ghcr.io/chroma-core/chroma:latest",
+                    "restart": "unless-stopped", 
+                    "ports": ["8000:8000"],
+                    "networks": ["cc_automator_network"],
+                    "security_opt": ["no-new-privileges:true"],
+                    "volumes": [f"{service_name}_data:/chroma/chroma"]
+                }
+                compose_content["volumes"][f"{service_name}_data"] = {}
+                
+            else:
+                # Generic service configuration
+                compose_content["services"][service_name] = {
+                    "image": f"{service_name}:latest",
+                    "restart": "unless-stopped",
+                    "networks": ["cc_automator_network"],
+                    "security_opt": ["no-new-privileges:true"]
+                }
+        
+        # Write docker-compose.yml
+        import yaml
+        compose_file = self.project_dir / "docker-compose.yml"
+        with open(compose_file, 'w') as f:
+            yaml.dump(compose_content, f, default_flow_style=False, sort_keys=False)
         
     def _initialize_optional_components(self):
         """Initialize Phase 4 components if available"""

@@ -37,11 +37,19 @@ class DockerOrchestrator:
     def setup_project_containers(self) -> bool:
         """Set up all required containers for the project"""
         
-        # Analyze dependencies if not already done
+        # Check for dependencies - should be provided by orchestrator
         if not self.dependencies_file.exists():
-            if self.verbose:
-                print("🔍 Analyzing project dependencies...")
-            analyze_project_dependencies(self.project_dir)
+            # Look for intelligent discovery first
+            discovery_file = self.project_dir / ".cc_automator" / "project_discovery.json"
+            if discovery_file.exists():
+                if self.verbose:
+                    print("🔍 Using intelligent project discovery for Docker setup...")
+                # Dependencies should be handled by orchestrator
+                return True
+            else:
+                if self.verbose:
+                    print("⚠️  No dependency analysis found - skipping Docker setup")
+                return True
         
         # Load dependency analysis
         analysis = self._load_analysis()
