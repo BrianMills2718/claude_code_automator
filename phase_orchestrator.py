@@ -554,13 +554,21 @@ Write to it: PHASE_COMPLETE"""
         if phase.name == "implement":
             disallowed = ["TodoWrite", "TodoRead", "Bash", "WebSearch", "WebFetch"]
         
+        # Use Sonnet for mechanical phases (lint, typecheck) to save costs
+        model = None
+        if phase.name in ["lint", "typecheck"]:
+            model = "claude-3-5-sonnet-20241022"  # Latest Sonnet model
+            if self.verbose:
+                print(f"Using Sonnet model for {phase.name} phase (cost-effective for mechanical tasks)")
+        
         options = ClaudeCodeOptions(
             max_turns=phase.max_turns,
             allowed_tools=phase.allowed_tools,
             disallowed_tools=disallowed,
             mcp_servers=mcp_servers,
             cwd=str(self.working_dir),
-            permission_mode="bypassPermissions"  # For autonomous operation
+            permission_mode="bypassPermissions",  # For autonomous operation
+            model=model  # Use Sonnet for lint/typecheck, default (Opus) for others
         )
         
         # Track messages for conversation context
@@ -1421,15 +1429,15 @@ Complete the phase now."""
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "WebSearch", "mcp__context7__resolve-library-id", "mcp__context7__get-library-docs"], None, 15),  # Full tools restored
-    ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit"], None, 20),  # SDK needs more for tool use
-    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit"], None, 50),  # Complex implementation
-    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash"], None, 20),
-    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash"], None, 20),
-    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash", "WebSearch"], None, 30),
-    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash", "WebSearch"], None, 30),
-    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write"], None, 20),
-    ("validate",     "Validate all implementations are real", ["Read", "Bash", "Write", "Edit", "Grep"], None, 25),
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "mcp__cc-automator-tools__safe_websearch", "mcp__cc-automator-tools__project_context_analyzer"], None, 15),
+    ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit", "mcp__cc-automator-tools__project_context_analyzer"], None, 20),
+    ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit", "mcp__cc-automator-tools__safe_file_operations"], None, 50),
+    ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
+    ("typecheck",    "Fix type errors (mypy --strict)", ["Read", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
+    ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 30),
+    ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 30),
+    ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
+    ("validate",     "Validate all implementations are real", ["Read", "Bash", "Write", "Edit", "Grep", "mcp__cc-automator-tools__safe_command_runner"], None, 25),
     ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 15)
 ]
 

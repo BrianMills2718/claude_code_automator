@@ -131,6 +131,12 @@ class FileParallelExecutor:
             else:  # mypy
                 error_list.append(f"Line {error.line} - {error.message}")
         
+        # Ensure we have a valid error list
+        if not error_list:
+            error_list = ["No specific errors found"]
+        
+        errors_text = "\n".join(error_list)
+        
         prompt = f"""## Fix {fix_type} errors in {file_path}
 
 ### File Content:
@@ -139,7 +145,7 @@ class FileParallelExecutor:
 ```
 
 ### Errors to Fix:
-{chr(10).join(error_list)}
+{errors_text}
 
 ### Instructions:
 1. Fix ONLY the errors listed above
@@ -162,100 +168,118 @@ Write to it: PHASE_COMPLETE
         
         print(f"  🔧 Fixing {fix_type} errors in {file_path} ({len(errors)} errors)")
         
-        prompt = self.create_file_fix_prompt(file_path, errors, fix_type)
-        if not prompt:
-            return {"status": "skipped", "file": file_path, "reason": "File not found"}
-        
-        # Create a phase for this file
-        phase = create_phase(
-            name=f"{fix_type}_{Path(file_path).stem}",
-            description=f"Fix {fix_type} errors in {file_path}",
-            prompt=prompt
-        )
-        
-        # Use shorter timeout for file-level fixes
-        phase.timeout_seconds = 300  # 5 minutes per file
-        phase.max_turns = 10  # Fewer turns needed for focused fixes
-        
-        # Execute the fix
-        result = orchestrator.execute_phase(phase)
-        
-        return {
-            "status": "completed" if phase.status == PhaseStatus.COMPLETED else "failed",
-            "file": file_path,
-            "errors_fixed": len(errors),
-            "cost": phase.cost_usd,
-            "duration": phase.duration_ms,
-            "error": phase.error
-        }
+        try:
+            prompt = self.create_file_fix_prompt(file_path, errors, fix_type)
+            if not prompt:
+                return {"status": "skipped", "file": file_path, "reason": "File not found"}
+            
+            # Create a phase for this file
+            phase = create_phase(
+                name=f"{fix_type}_{Path(file_path).stem}",
+                description=f"Fix {fix_type} errors in {file_path}",
+                prompt=prompt
+            )
+            
+            # Use shorter timeout for file-level fixes
+            phase.timeout_seconds = 300  # 5 minutes per file
+            phase.max_turns = 10  # Fewer turns needed for focused fixes
+            
+            # Execute the fix
+            result = orchestrator.execute_phase(phase)
+            
+            return {
+                "status": "completed" if phase.status == PhaseStatus.COMPLETED else "failed",
+                "file": file_path,
+                "errors_fixed": len(errors),
+                "cost": phase.cost_usd,
+                "duration": phase.duration_ms,
+                "error": phase.error
+            }
+        except Exception as e:
+            return {
+                "status": "failed",
+                "file": file_path,
+                "errors_fixed": 0,
+                "cost": 0,
+                "duration": 0,
+                "error": str(e)
+            }
     
     def execute_parallel_lint(self, orchestrator) -> Tuple[bool, List[Dict]]:
-        """Execute flake8 and fix errors in parallel by file"""
+        """Execute flake8 and fix errors with iteration until clean"""
         
-        print("\n🔍 Running flake8 to find errors...")
+        all_results = []
+        iteration = 0
+        max_iterations = 5  # Prevent infinite loops
         
-        # Run flake8
-        result = subprocess.run(
-            ["flake8", "--select=F", "--exclude=venv,__pycache__,.git", "."],
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            print("✅ No flake8 F-errors found")
-            return True, []
-        
-        # Parse errors by file
-        errors_by_file = self.parse_flake8_output(result.stdout)
-        
-        if not errors_by_file:
-            print("✅ No F-errors to fix")
-            return True, []
-        
-        print(f"\n📊 Found F-errors in {len(errors_by_file)} files")
-        for file_path, errors in errors_by_file.items():
-            print(f"  - {file_path}: {len(errors)} errors")
-        
-        print(f"\n🚀 Fixing errors in parallel (max {self.max_workers} workers)...")
-        
-        # Execute fixes in parallel
-        results = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all file fixes
-            future_to_file = {
-                executor.submit(
-                    self.execute_file_fix, 
-                    file_path, 
-                    errors, 
-                    "lint", 
-                    orchestrator
-                ): file_path
-                for file_path, errors in errors_by_file.items()
-            }
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔍 Running flake8 to find errors (iteration {iteration})...")
             
-            # Process results as they complete
-            for future in as_completed(future_to_file):
-                file_path = future_to_file[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    
-                    if result["status"] == "completed":
-                        print(f"  ✅ Fixed {file_path}")
-                    else:
-                        print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
+            # Run flake8
+            result = subprocess.run(
+                ["flake8", "--select=F", "--exclude=venv,__pycache__,.git", "."],
+                cwd=self.project_dir,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("✅ No flake8 F-errors found - all clean!")
+                return True, all_results
+            
+            # Parse errors by file
+            errors_by_file = self.parse_flake8_output(result.stdout)
+            
+            if not errors_by_file:
+                print("✅ No F-errors to fix")
+                return True, all_results
+            
+            print(f"\n📊 Found F-errors in {len(errors_by_file)} files")
+            for file_path, errors in errors_by_file.items():
+                print(f"  - {file_path}: {len(errors)} errors")
+            
+            print(f"\n🚀 Fixing errors in parallel...")
+            
+            # Execute fixes in parallel with ThreadPoolExecutor
+            iteration_results = []
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submit all file fixes
+                future_to_file = {
+                    executor.submit(self.execute_file_fix, file_path, errors, "lint", orchestrator): file_path
+                    for file_path, errors in errors_by_file.items()
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        result = future.result()
+                        iteration_results.append(result)
+                        all_results.append(result)
                         
-                except Exception as e:
-                    print(f"  ❌ Error fixing {file_path}: {e}")
-                    results.append({
-                        "status": "failed",
-                        "file": file_path,
-                        "error": str(e)
-                    })
+                        if result["status"] == "completed":
+                            print(f"  ✅ Fixed {file_path}")
+                        else:
+                            print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
+                            
+                    except Exception as e:
+                        print(f"  ❌ Error fixing {file_path}: {e}")
+                        result = {
+                            "status": "failed",
+                            "file": file_path,
+                            "error": str(e)
+                        }
+                        iteration_results.append(result)
+                        all_results.append(result)
+            
+            # Check if all files in this iteration were fixed successfully
+            all_fixed = all(r["status"] == "completed" for r in iteration_results)
+            if not all_fixed:
+                print(f"\n⚠️  Some files failed to fix in iteration {iteration}, continuing...")
         
-        # Verify all errors fixed
-        print("\n🔍 Verifying fixes...")
+        # Final verification after all iterations
+        print("\n🔍 Final verification...")
         verify_result = subprocess.run(
             ["flake8", "--select=F", "--exclude=venv,__pycache__,.git", "."],
             cwd=self.project_dir,
@@ -267,77 +291,87 @@ Write to it: PHASE_COMPLETE
         if success:
             print("✅ All F-errors fixed successfully")
         else:
-            print("❌ Some F-errors remain")
+            print(f"❌ Some F-errors remain after {max_iterations} iterations")
+            remaining_errors = self.parse_flake8_output(verify_result.stdout)
+            print(f"   Remaining errors in {len(remaining_errors)} files")
             
-        return success, results
+        return success, all_results
     
     def execute_parallel_typecheck(self, orchestrator) -> Tuple[bool, List[Dict]]:
-        """Execute mypy and fix errors in parallel by file"""
+        """Execute mypy and fix errors with iteration until clean"""
         
-        print("\n🔍 Running mypy --strict to find type errors...")
+        all_results = []
+        iteration = 0
+        max_iterations = 5  # Prevent infinite loops
         
-        # Run mypy
-        result = subprocess.run(
-            ["mypy", "--strict", "."],
-            cwd=self.project_dir,
-            capture_output=True,
-            text=True
-        )
-        
-        if result.returncode == 0:
-            print("✅ No mypy errors found")
-            return True, []
-        
-        # Parse errors by file
-        errors_by_file = self.parse_mypy_output(result.stdout)
-        
-        if not errors_by_file:
-            print("✅ No type errors to fix")
-            return True, []
-        
-        print(f"\n📊 Found type errors in {len(errors_by_file)} files")
-        for file_path, errors in errors_by_file.items():
-            print(f"  - {file_path}: {len(errors)} errors")
-        
-        print(f"\n🚀 Fixing errors in parallel (max {self.max_workers} workers)...")
-        
-        # Execute fixes in parallel
-        results = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # Submit all file fixes
-            future_to_file = {
-                executor.submit(
-                    self.execute_file_fix, 
-                    file_path, 
-                    errors, 
-                    "typecheck", 
-                    orchestrator
-                ): file_path
-                for file_path, errors in errors_by_file.items()
-            }
+        while iteration < max_iterations:
+            iteration += 1
+            print(f"\n🔍 Running mypy --strict to find type errors (iteration {iteration})...")
             
-            # Process results as they complete
-            for future in as_completed(future_to_file):
-                file_path = future_to_file[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    
-                    if result["status"] == "completed":
-                        print(f"  ✅ Fixed {file_path}")
-                    else:
-                        print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
+            # Run mypy
+            result = subprocess.run(
+                ["mypy", "--strict", "."],
+                cwd=self.project_dir,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                print("✅ No mypy errors found - all clean!")
+                return True, all_results
+            
+            # Parse errors by file
+            errors_by_file = self.parse_mypy_output(result.stdout)
+            
+            if not errors_by_file:
+                print("✅ No type errors to fix")
+                return True, all_results
+            
+            print(f"\n📊 Found type errors in {len(errors_by_file)} files")
+            for file_path, errors in errors_by_file.items():
+                print(f"  - {file_path}: {len(errors)} errors")
+            
+            print(f"\n🚀 Fixing errors in parallel...")
+            
+            # Execute fixes in parallel with ThreadPoolExecutor
+            iteration_results = []
+            with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                # Submit all file fixes
+                future_to_file = {
+                    executor.submit(self.execute_file_fix, file_path, errors, "typecheck", orchestrator): file_path
+                    for file_path, errors in errors_by_file.items()
+                }
+                
+                # Collect results as they complete
+                for future in as_completed(future_to_file):
+                    file_path = future_to_file[future]
+                    try:
+                        result = future.result()
+                        iteration_results.append(result)
+                        all_results.append(result)
                         
-                except Exception as e:
-                    print(f"  ❌ Error fixing {file_path}: {e}")
-                    results.append({
-                        "status": "failed", 
-                        "file": file_path,
-                        "error": str(e)
-                    })
+                        if result["status"] == "completed":
+                            print(f"  ✅ Fixed {file_path}")
+                        else:
+                            print(f"  ❌ Failed to fix {file_path}: {result.get('error', 'Unknown error')}")
+                            
+                    except Exception as e:
+                        print(f"  ❌ Error fixing {file_path}: {e}")
+                        result = {
+                            "status": "failed",
+                            "file": file_path,
+                            "error": str(e)
+                        }
+                        iteration_results.append(result)
+                        all_results.append(result)
+            
+            # Check if all files in this iteration were fixed successfully
+            all_fixed = all(r["status"] == "completed" for r in iteration_results)
+            if not all_fixed:
+                print(f"\n⚠️  Some files failed to fix in iteration {iteration}, continuing...")
         
-        # Verify all errors fixed
-        print("\n🔍 Verifying fixes...")
+        # Final verification after all iterations
+        print("\n🔍 Final verification...")
         verify_result = subprocess.run(
             ["mypy", "--strict", "."],
             cwd=self.project_dir,
@@ -349,6 +383,8 @@ Write to it: PHASE_COMPLETE
         if success:
             print("✅ All type errors fixed successfully")
         else:
-            print("❌ Some type errors remain")
+            print(f"❌ Some type errors remain after {max_iterations} iterations")
+            remaining_errors = self.parse_mypy_output(verify_result.stdout)
+            print(f"   Remaining errors in {len(remaining_errors)} files")
             
-        return success, results
+        return success, all_results
