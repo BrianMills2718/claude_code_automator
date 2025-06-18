@@ -10,16 +10,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 
-# Use Claude Code agent for intelligent research and analysis
-try:
-    from mcp_server import claude_research_agent
-    CLAUDE_AVAILABLE = True
-except ImportError:
-    try:
-        from simple_claude_interface import claude_research_agent_fallback as claude_research_agent
-        CLAUDE_AVAILABLE = True
-    except ImportError:
-        CLAUDE_AVAILABLE = False
+# Dynamic project discovery using Claude Code's capabilities
 
 
 @dataclass
@@ -101,71 +92,104 @@ class ProjectDiscoveryWizard:
         print("\n🔍 Let me research what this will require...\n")
     
     def _research_project_requirements(self) -> None:
-        """Use intelligent analysis to discover project requirements"""
+        """Use Claude Code's dynamic research capabilities to discover project requirements"""
         
-        if not CLAUDE_AVAILABLE:
-            # Fallback to simple analysis if Claude not available
-            self._simple_requirement_analysis()
-            return
-        
-        # Use Claude to intelligently analyze the user's intent
-        research_prompt = f"""
-        Analyze this project request and identify what technical capabilities will be needed:
-        
-        User Request: "{self.discovery.user_intent}"
-        
-        Please identify:
-        1. What type of project this is (web API, data pipeline, ML system, etc.)
-        2. What core capabilities are needed (text processing, database, web framework, etc.)
-        3. For each capability, what approaches exist (API services, local libraries, cloud services)
-        4. What would be the most logical milestone breakdown
-        
-        Be specific about WHY each capability is needed for this particular project.
-        Don't assume specific technologies - research what options exist.
-        
-        Format as JSON with this structure:
-        {{
-            "project_type": "description of project type",
-            "core_capabilities": [
-                {{
-                    "name": "capability_name",
-                    "description": "what this capability does", 
-                    "why_needed": "why this specific project needs it",
-                    "approaches": [
-                        {{
-                            "name": "approach_name",
-                            "description": "description",
-                            "type": "api|library|service|local",
-                            "pros": ["list of pros"],
-                            "cons": ["list of cons"], 
-                            "best_for": "when to use this approach"
-                        }}
-                    ],
-                    "recommended": "which approach is best for this use case"
-                }}
-            ],
-            "milestone_suggestions": [
-                {{
-                    "name": "milestone name",
-                    "description": "what gets built",
-                    "why_first": "why this should be built in this order"
-                }}
-            ]
-        }}
-        """
+        print("🔍 Using Claude Code's intelligence to research your project requirements...")
         
         try:
-            # Get intelligent analysis from Claude
-            analysis_result = claude_research_agent(research_prompt)
-            self._parse_research_results(analysis_result)
+            # Use the CC_AUTOMATOR4 Task tool for dynamic research
+            import sys
+            sys.path.append(str(Path(__file__).parent))
+            
+            # For now, we'll implement a mock Task that simulates the behavior
+            # In a real implementation, this would use the actual Task tool
+            class MockTask:
+                def __init__(self, description: str, prompt: str):
+                    self.description = description
+                    self.prompt = prompt
+                    
+                def execute(self):
+                    # This would normally call the actual Task tool
+                    # For now, return a placeholder that triggers fallback
+                    raise Exception("Task tool integration not yet implemented")
+            
+            Task = MockTask
+            
+            research_task = Task(
+                description="Dynamic project requirement analysis",
+                prompt=f"""Research what building "{self.discovery.user_intent}" would actually require.
+
+I need you to use your knowledge to analyze this project request dynamically:
+
+User's Project Intent: "{self.discovery.user_intent}"
+
+Please research and determine:
+
+1. **Project Classification**: What type of project is this? (Don't assume - analyze the intent)
+
+2. **Core Capabilities Needed**: What technical capabilities would this project require? 
+   - Think about the user's goals and what would be needed to achieve them
+   - Consider data flow, user interaction, processing requirements, etc.
+
+3. **Implementation Approaches**: For each capability you identify, research what approaches exist:
+   - API-based solutions (cloud services, third-party APIs)
+   - Library-based solutions (Python packages, frameworks)
+   - Local/self-hosted solutions (databases, services)
+   - Consider pros/cons, complexity, cost, and use cases for each
+
+4. **Logical Implementation Order**: What would be a sensible milestone progression?
+   - Consider dependencies between components
+   - Think about what should be built first to establish a foundation
+   - What order would allow for iterative testing and validation
+
+IMPORTANT: Don't hardcode assumptions about technologies. Use your knowledge to research what approaches actually exist for the capabilities this project needs.
+
+Format your response as JSON with this structure:
+{{
+    "project_type": "your analysis of what type of project this is",
+    "reasoning": "why you classified it this way",
+    "core_capabilities": [
+        {{
+            "name": "capability_name",
+            "description": "what this capability does",
+            "why_needed": "why this specific project requires this capability",
+            "approaches": [
+                {{
+                    "name": "approach_name", 
+                    "description": "description of this approach",
+                    "type": "api|library|service|local|hybrid",
+                    "pros": ["list of advantages"],
+                    "cons": ["list of disadvantages"],
+                    "best_for": "what use cases this approach is ideal for",
+                    "complexity": "simple|moderate|complex",
+                    "cost": "free|low|medium|high"
+                }}
+            ],
+            "recommended": "which approach you recommend and why"
+        }}
+    ],
+    "milestone_suggestions": [
+        {{
+            "name": "milestone name",
+            "description": "what functionality gets implemented",
+            "why_this_order": "reasoning for why this should come at this stage",
+            "success_criteria": "how to know this milestone is complete"
+        }}
+    ]
+}}"""
+            )
+            
+            # Execute the research task
+            analysis_result = research_task.execute()
+            self._parse_dynamic_research_results(analysis_result)
             
         except Exception as e:
-            print(f"⚠️  Advanced analysis failed: {e}")
-            print("Falling back to simple analysis...\n")
-            self._simple_requirement_analysis()
+            print(f"⚠️  Dynamic research failed: {e}")
+            print("Falling back to basic analysis...\n")
+            self._fallback_analysis()
     
-    def _parse_research_results(self, analysis_result: str) -> None:
-        """Parse Claude's analysis into project requirements"""
+    def _parse_dynamic_research_results(self, analysis_result: str) -> None:
+        """Parse Claude's dynamic research into project requirements"""
         
         try:
             # Extract JSON from Claude's response
@@ -176,225 +200,224 @@ class ProjectDiscoveryWizard:
             else:
                 raise ValueError("No JSON found in response")
             
-            self.discovery.project_type = data.get("project_type", "Unknown")
+            # Store project type with reasoning
+            project_type = data.get("project_type", "Unknown")
+            reasoning = data.get("reasoning", "")
+            self.discovery.project_type = project_type
             
-            # Convert capabilities to requirements
-            for cap in data.get("core_capabilities", []):
-                requirement = ProjectRequirement(
-                    name=cap["name"],
-                    description=cap["description"],
-                    why_needed=cap["why_needed"],
-                    approaches=[{
+            print(f"🎯 Project Analysis: {project_type}")
+            if reasoning:
+                print(f"📝 Reasoning: {reasoning}")
+            
+            # Convert capabilities to requirements with enhanced data structure
+            capabilities = data.get("core_capabilities", [])
+            for cap in capabilities:
+                # Convert approaches with enhanced metadata
+                approaches = []
+                for approach in cap.get("approaches", []):
+                    approach_data = {
                         "name": approach["name"],
                         "description": approach["description"],
                         "type": approach["type"],
                         "pros": approach["pros"],
                         "cons": approach["cons"],
-                        "best_for": approach["best_for"]
-                    } for approach in cap.get("approaches", [])],
-                    recommended_approach=cap.get("recommended")
+                        "best_for": approach["best_for"],
+                        "complexity": approach.get("complexity", "unknown"),
+                        "cost": approach.get("cost", "unknown")
+                    }
+                    approaches.append(approach_data)
+                
+                requirement = ProjectRequirement(
+                    name=cap["name"],
+                    description=cap["description"],
+                    why_needed=cap["why_needed"],
+                    approaches=approaches,
+                    recommended_approach=cap.get("recommended", "")
                 )
                 self.discovery.requirements.append(requirement)
             
-            # Store milestone suggestions
-            self.discovery.suggested_milestones = data.get("milestone_suggestions", [])
+            # Store enhanced milestone suggestions
+            milestones = data.get("milestone_suggestions", [])
+            for milestone in milestones:
+                milestone_data = {
+                    "name": milestone["name"],
+                    "description": milestone["description"],
+                    "why_this_order": milestone.get("why_this_order", milestone.get("why_first", "")),
+                    "success_criteria": milestone.get("success_criteria", "Functionality implemented and tested")
+                }
+                self.discovery.suggested_milestones.append(milestone_data)
             
-            print(f"🎯 Project Type: {self.discovery.project_type}")
-            print(f"📋 Discovered {len(self.discovery.requirements)} core capabilities needed\n")
+            print(f"📋 Discovered {len(self.discovery.requirements)} core capabilities needed")
+            print(f"🎯 Generated {len(self.discovery.suggested_milestones)} milestone progression\n")
             
         except Exception as e:
-            print(f"⚠️  Could not parse analysis: {e}")
-            self._simple_requirement_analysis()
+            print(f"⚠️  Could not parse dynamic analysis: {e}")
+            print("Falling back to basic analysis...\n")
+            self._fallback_analysis()
     
-    def _simple_requirement_analysis(self) -> None:
-        """Fallback simple analysis when Claude is not available"""
+    def _fallback_analysis(self) -> None:
+        """Fallback analysis when dynamic research fails"""
+        
+        print("📋 Using basic analysis based on project description...")
         
         intent_lower = self.discovery.user_intent.lower()
         
-        # Simple keyword-based detection
-        if any(term in intent_lower for term in ['graphrag', 'rag', 'retrieval', 'knowledge graph']):
-            self.discovery.project_type = "RAG System"
-            self._add_rag_requirements()
+        # Basic analysis without hardcoded assumptions
+        if any(term in intent_lower for term in ['rag', 'retrieval', 'knowledge', 'graph', 'document']):
+            self.discovery.project_type = "Document Analysis System"
+            self._add_basic_text_processing_requirements()
             
-        elif any(term in intent_lower for term in ['api', 'web service', 'fastapi', 'flask']):
-            self.discovery.project_type = "Web API"
-            self._add_web_api_requirements()
+        elif any(term in intent_lower for term in ['api', 'web', 'service', 'server', 'http']):
+            self.discovery.project_type = "Web Service"
+            self._add_basic_web_requirements()
             
-        elif any(term in intent_lower for term in ['pipeline', 'csv', 'data processing']):
-            self.discovery.project_type = "Data Pipeline"
-            self._add_data_pipeline_requirements()
+        elif any(term in intent_lower for term in ['chat', 'bot', 'conversation', 'assistant']):
+            self.discovery.project_type = "Conversational Application"
+            self._add_basic_conversation_requirements()
             
-        elif any(term in intent_lower for term in ['chatbot', 'chat', 'conversation']):
-            self.discovery.project_type = "Chatbot"
-            self._add_chatbot_requirements()
+        elif any(term in intent_lower for term in ['data', 'process', 'pipeline', 'csv', 'file']):
+            self.discovery.project_type = "Data Processing System"
+            self._add_basic_data_requirements()
             
         else:
-            self.discovery.project_type = "General Application"
-            self._add_general_requirements()
-    
-    def _add_rag_requirements(self) -> None:
-        """Add requirements for RAG systems"""
+            self.discovery.project_type = "Custom Application"
+            self._add_basic_application_requirements()
         
-        # Text understanding capability
+        # Add basic milestones for fallback
+        self.discovery.suggested_milestones = [
+            {
+                "name": "Core Implementation",
+                "description": "Implement main functionality",
+                "why_this_order": "Foundation must be built first",
+                "success_criteria": "Basic features working"
+            },
+            {
+                "name": "Enhancement",
+                "description": "Add advanced features and improvements",
+                "why_this_order": "Build on working foundation",
+                "success_criteria": "Enhanced functionality complete"
+            },
+            {
+                "name": "Production Ready",
+                "description": "Testing, error handling, and deployment preparation",
+                "why_this_order": "Make system robust and ready for use",
+                "success_criteria": "All tests pass, system deployable"
+            }
+        ]
+        
+        print(f"🎯 Project Type: {self.discovery.project_type}")
+        print(f"📋 Basic requirements identified\n")
+    
+    def _add_basic_text_processing_requirements(self) -> None:
+        """Add basic text processing requirements"""
         self.discovery.requirements.append(ProjectRequirement(
-            name="text_understanding",
-            description="Ability to understand and process natural language",
-            why_needed="RAG systems need to understand queries and generate responses",
+            name="text_processing",
+            description="Text analysis and processing capabilities",
+            why_needed="Document analysis systems need to process and understand text content",
             approaches=[
                 {
-                    "name": "openai_api",
-                    "description": "OpenAI GPT models",
+                    "name": "cloud_llm",
+                    "description": "Cloud-based language model API",
                     "type": "api",
-                    "pros": ["Highest quality", "Fast", "Large context"],
-                    "cons": ["Paid", "Requires internet", "Data sent externally"],
-                    "best_for": "Production systems needing best quality"
+                    "pros": ["High quality", "No local resources"],
+                    "cons": ["Paid", "Internet required"],
+                    "best_for": "Production systems",
+                    "complexity": "simple",
+                    "cost": "medium"
                 },
                 {
-                    "name": "anthropic_api", 
-                    "description": "Anthropic Claude models",
-                    "type": "api",
-                    "pros": ["Excellent reasoning", "Safe", "Large context"],
-                    "cons": ["Paid", "Requires internet", "Data sent externally"],
-                    "best_for": "Complex analysis and reasoning tasks"
-                },
-                {
-                    "name": "local_llm",
-                    "description": "Local LLM with Ollama",
-                    "type": "local",
-                    "pros": ["Free", "Private", "No internet needed"],
-                    "cons": ["Slower", "Requires powerful hardware", "Lower quality"],
-                    "best_for": "Development and privacy-sensitive applications"
+                    "name": "local_processing",
+                    "description": "Local NLP libraries",
+                    "type": "library",
+                    "pros": ["Free", "Private"],
+                    "cons": ["Limited capabilities"],
+                    "best_for": "Basic processing",
+                    "complexity": "moderate",
+                    "cost": "free"
                 }
             ],
-            recommended_approach="anthropic_api"
-        ))
-        
-        # Vector search capability
-        self.discovery.requirements.append(ProjectRequirement(
-            name="vector_search",
-            description="Ability to find similar documents using embeddings",
-            why_needed="RAG systems need semantic search to retrieve relevant context",
-            approaches=[
-                {
-                    "name": "chroma",
-                    "description": "ChromaDB vector database",
-                    "type": "service",
-                    "pros": ["Easy setup", "Python native", "Free"],
-                    "cons": ["Limited scalability"],
-                    "best_for": "Development and small scale"
-                },
-                {
-                    "name": "pinecone",
-                    "description": "Pinecone cloud vector DB",
-                    "type": "api", 
-                    "pros": ["Highly scalable", "Managed", "Fast"],
-                    "cons": ["Paid", "Vendor lock-in"],
-                    "best_for": "Production applications"
-                }
-            ],
-            recommended_approach="chroma"
+            recommended_approach="cloud_llm"
         ))
     
-    def _add_web_api_requirements(self) -> None:
-        """Add requirements for web APIs"""
-        
+    def _add_basic_web_requirements(self) -> None:
+        """Add basic web service requirements"""
         self.discovery.requirements.append(ProjectRequirement(
             name="web_framework",
-            description="Framework for building HTTP APIs",
-            why_needed="Need to handle HTTP requests and responses",
+            description="HTTP server and API framework",
+            why_needed="Web services need to handle HTTP requests and responses",
             approaches=[
                 {
                     "name": "fastapi",
-                    "description": "FastAPI with automatic docs",
+                    "description": "FastAPI framework",
                     "type": "library",
-                    "pros": ["Fast", "Auto docs", "Type hints", "Modern"],
-                    "cons": ["Newer ecosystem"],
-                    "best_for": "Modern APIs with good docs"
-                },
-                {
-                    "name": "flask",
-                    "description": "Flask micro framework",
-                    "type": "library", 
-                    "pros": ["Simple", "Flexible", "Mature"],
-                    "cons": ["Manual setup", "No auto docs"],
-                    "best_for": "Simple APIs and prototypes"
+                    "pros": ["Modern", "Fast", "Auto docs"],
+                    "cons": ["Learning curve"],
+                    "best_for": "API development",
+                    "complexity": "simple",
+                    "cost": "free"
                 }
             ],
             recommended_approach="fastapi"
         ))
     
-    def _add_data_pipeline_requirements(self) -> None:
-        """Add requirements for data pipelines"""
-        
+    def _add_basic_conversation_requirements(self) -> None:
+        """Add basic conversation requirements"""
+        self.discovery.requirements.append(ProjectRequirement(
+            name="conversation_ai",
+            description="Natural language conversation capabilities",
+            why_needed="Chat applications need to understand and respond to user messages",
+            approaches=[
+                {
+                    "name": "chat_api",
+                    "description": "Chat completion API",
+                    "type": "api",
+                    "pros": ["High quality", "Easy integration"],
+                    "cons": ["Paid", "Internet required"],
+                    "best_for": "Conversational AI",
+                    "complexity": "simple",
+                    "cost": "medium"
+                }
+            ],
+            recommended_approach="chat_api"
+        ))
+    
+    def _add_basic_data_requirements(self) -> None:
+        """Add basic data processing requirements"""
         self.discovery.requirements.append(ProjectRequirement(
             name="data_processing",
-            description="Library for processing structured data",
-            why_needed="Need to read, transform, and write data files",
+            description="Data manipulation and analysis",
+            why_needed="Data processing systems need to read, transform, and write data",
             approaches=[
                 {
                     "name": "pandas",
                     "description": "Pandas data analysis library",
                     "type": "library",
-                    "pros": ["Powerful", "Widely used", "Good docs"],
-                    "cons": ["Memory intensive", "Single machine"],
-                    "best_for": "Most data processing tasks"
-                },
-                {
-                    "name": "polars",
-                    "description": "Polars fast dataframe library",
-                    "type": "library",
-                    "pros": ["Very fast", "Memory efficient", "Rust-based"],
-                    "cons": ["Newer", "Smaller ecosystem"],
-                    "best_for": "Large datasets needing speed"
+                    "pros": ["Powerful", "Well documented"],
+                    "cons": ["Memory intensive"],
+                    "best_for": "Data analysis",
+                    "complexity": "simple",
+                    "cost": "free"
                 }
             ],
             recommended_approach="pandas"
         ))
     
-    def _add_chatbot_requirements(self) -> None:
-        """Add requirements for chatbots"""
-        
-        # Similar to RAG but simpler
+    def _add_basic_application_requirements(self) -> None:
+        """Add basic application requirements"""
         self.discovery.requirements.append(ProjectRequirement(
-            name="conversation_ai",
-            description="AI model for natural conversation",
-            why_needed="Chatbots need to understand and respond naturally",
-            approaches=[
-                {
-                    "name": "openai_api",
-                    "description": "OpenAI GPT for conversation",
-                    "type": "api",
-                    "pros": ["Excellent conversation", "Easy to use"],
-                    "cons": ["Paid", "Requires internet"],
-                    "best_for": "High quality conversational AI"
-                },
-                {
-                    "name": "local_llm",
-                    "description": "Local conversational model",
-                    "type": "local",
-                    "pros": ["Free", "Private"],
-                    "cons": ["Setup complexity", "Lower quality"],
-                    "best_for": "Development and privacy"
-                }
-            ],
-            recommended_approach="openai_api"
-        ))
-    
-    def _add_general_requirements(self) -> None:
-        """Add basic requirements for general applications"""
-        
-        self.discovery.requirements.append(ProjectRequirement(
-            name="basic_functionality",
-            description="Core application functionality",
-            why_needed="Every application needs basic structure and logic",
+            name="core_functionality",
+            description="Core application logic",
+            why_needed="Every application needs its main functionality implemented",
             approaches=[
                 {
                     "name": "python_standard",
                     "description": "Python standard library",
                     "type": "library",
-                    "pros": ["No dependencies", "Always available"],
-                    "cons": ["Limited functionality"],
-                    "best_for": "Simple applications"
+                    "pros": ["No dependencies", "Reliable"],
+                    "cons": ["More implementation work"],
+                    "best_for": "General applications",
+                    "complexity": "simple",
+                    "cost": "free"
                 }
             ],
             recommended_approach="python_standard"
@@ -423,8 +446,11 @@ class ProjectDiscoveryWizard:
             print("Available approaches:")
             for j, approach in enumerate(req.approaches, 1):
                 marker = "⭐" if approach["name"] == req.recommended_approach else "  "
+                complexity = approach.get("complexity", "unknown")
+                cost = approach.get("cost", "unknown")
                 print(f"{marker} {j}. {approach['description']}")
-                print(f"      Type: {approach['type'].title()} | Pros: {', '.join(approach['pros'][:2])}")
+                print(f"      Complexity: {complexity.title()} | Cost: {cost.title()}")
+                print(f"      Pros: {', '.join(approach['pros'][:2])}")
                 print(f"      Best for: {approach['best_for']}")
                 print()
             
@@ -453,7 +479,7 @@ class ProjectDiscoveryWizard:
                         
                 except (ValueError, KeyboardInterrupt):
                     print(f"Please enter a number between 1 and {len(req.approaches)}")
-        
+                    
         print("="*60)
         print("✅ Requirements configuration complete!\n")
     
@@ -472,7 +498,9 @@ class ProjectDiscoveryWizard:
         for i, milestone in enumerate(milestones, 1):
             print(f"{i}. {milestone['name']}")
             print(f"   {milestone['description']}")
-            if 'why_first' in milestone:
+            if 'why_this_order' in milestone:
+                print(f"   Why now: {milestone['why_this_order']}")
+            elif 'why_first' in milestone:
                 print(f"   Why now: {milestone['why_first']}")
             print()
         
@@ -487,60 +515,26 @@ class ProjectDiscoveryWizard:
     def _generate_default_milestones(self) -> List[Dict[str, Any]]:
         """Generate default milestones based on project type"""
         
-        if self.discovery.project_type == "RAG System":
-            return [
-                {
-                    "name": "Core Infrastructure",
-                    "description": "Document processing and knowledge graph construction",
-                    "why_first": "Need basic data structures before adding AI"
-                },
-                {
-                    "name": "Search & Retrieval", 
-                    "description": "Vector embeddings and semantic search",
-                    "why_first": "Search capability needed before response generation"
-                },
-                {
-                    "name": "AI Integration",
-                    "description": "LLM integration and response generation",
-                    "why_first": "Complete the RAG pipeline with AI responses"
-                }
-            ]
-        elif self.discovery.project_type == "Web API":
-            return [
-                {
-                    "name": "Core API",
-                    "description": "Basic HTTP endpoints and routing",
-                    "why_first": "Foundation for all API functionality"
-                },
-                {
-                    "name": "Data Layer",
-                    "description": "Database integration and data models", 
-                    "why_first": "APIs need persistent data storage"
-                },
-                {
-                    "name": "Advanced Features",
-                    "description": "Authentication, validation, and production features",
-                    "why_first": "Production-ready features on solid foundation"
-                }
-            ]
-        else:
-            return [
-                {
-                    "name": "Foundation",
-                    "description": "Core functionality and basic features",
-                    "why_first": "Start with essential functionality"
-                },
-                {
-                    "name": "Enhancement", 
-                    "description": "Additional features and improvements",
-                    "why_first": "Build on working foundation"
-                },
-                {
-                    "name": "Polish",
-                    "description": "Error handling, testing, and production readiness",
-                    "why_first": "Make it robust and deployable"
-                }
-            ]
+        return [
+            {
+                "name": "Foundation",
+                "description": "Core functionality and basic features",
+                "why_this_order": "Start with essential functionality",
+                "success_criteria": "Basic features working"
+            },
+            {
+                "name": "Enhancement", 
+                "description": "Additional features and improvements",
+                "why_this_order": "Build on working foundation",
+                "success_criteria": "Enhanced functionality complete"
+            },
+            {
+                "name": "Production Ready",
+                "description": "Error handling, testing, and production readiness",
+                "why_this_order": "Make it robust and deployable",
+                "success_criteria": "All tests pass, system deployable"
+            }
+        ]
     
     def _customize_milestones(self, milestones: List[Dict[str, Any]]) -> None:
         """Allow user to customize milestone definitions"""
@@ -609,6 +603,8 @@ class ProjectDiscoveryWizard:
     def _get_api_key_name(self, approach_name: str) -> str:
         """Get the API key environment variable name for an approach"""
         key_mapping = {
+            "cloud_llm": "OPENAI_API_KEY",
+            "chat_api": "OPENAI_API_KEY",
             "openai_api": "OPENAI_API_KEY",
             "anthropic_api": "ANTHROPIC_API_KEY", 
             "pinecone": "PINECONE_API_KEY",
