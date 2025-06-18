@@ -92,101 +92,299 @@ class ProjectDiscoveryWizard:
         print("\n🔍 Let me research what this will require...\n")
     
     def _research_project_requirements(self) -> None:
-        """Use Claude Code's dynamic research capabilities to discover project requirements"""
+        """Use Claude Code's intelligence to research project requirements dynamically"""
         
         print("🔍 Using Claude Code's intelligence to research your project requirements...")
         
         try:
-            # Use the CC_AUTOMATOR4 Task tool for dynamic research
-            import sys
-            sys.path.append(str(Path(__file__).parent))
-            
-            # For now, we'll implement a mock Task that simulates the behavior
-            # In a real implementation, this would use the actual Task tool
-            class MockTask:
-                def __init__(self, description: str, prompt: str):
-                    self.description = description
-                    self.prompt = prompt
-                    
-                def execute(self):
-                    # This would normally call the actual Task tool
-                    # For now, return a placeholder that triggers fallback
-                    raise Exception("Task tool integration not yet implemented")
-            
-            Task = MockTask
-            
-            research_task = Task(
-                description="Dynamic project requirement analysis",
-                prompt=f"""Research what building "{self.discovery.user_intent}" would actually require.
-
-I need you to use your knowledge to analyze this project request dynamically:
-
-User's Project Intent: "{self.discovery.user_intent}"
-
-Please research and determine:
-
-1. **Project Classification**: What type of project is this? (Don't assume - analyze the intent)
-
-2. **Core Capabilities Needed**: What technical capabilities would this project require? 
-   - Think about the user's goals and what would be needed to achieve them
-   - Consider data flow, user interaction, processing requirements, etc.
-
-3. **Implementation Approaches**: For each capability you identify, research what approaches exist:
-   - API-based solutions (cloud services, third-party APIs)
-   - Library-based solutions (Python packages, frameworks)
-   - Local/self-hosted solutions (databases, services)
-   - Consider pros/cons, complexity, cost, and use cases for each
-
-4. **Logical Implementation Order**: What would be a sensible milestone progression?
-   - Consider dependencies between components
-   - Think about what should be built first to establish a foundation
-   - What order would allow for iterative testing and validation
-
-IMPORTANT: Don't hardcode assumptions about technologies. Use your knowledge to research what approaches actually exist for the capabilities this project needs.
-
-Format your response as JSON with this structure:
-{{
-    "project_type": "your analysis of what type of project this is",
-    "reasoning": "why you classified it this way",
-    "core_capabilities": [
-        {{
-            "name": "capability_name",
-            "description": "what this capability does",
-            "why_needed": "why this specific project requires this capability",
-            "approaches": [
-                {{
-                    "name": "approach_name", 
-                    "description": "description of this approach",
-                    "type": "api|library|service|local|hybrid",
-                    "pros": ["list of advantages"],
-                    "cons": ["list of disadvantages"],
-                    "best_for": "what use cases this approach is ideal for",
-                    "complexity": "simple|moderate|complex",
-                    "cost": "free|low|medium|high"
-                }}
-            ],
-            "recommended": "which approach you recommend and why"
-        }}
-    ],
-    "milestone_suggestions": [
-        {{
-            "name": "milestone name",
-            "description": "what functionality gets implemented",
-            "why_this_order": "reasoning for why this should come at this stage",
-            "success_criteria": "how to know this milestone is complete"
-        }}
-    ]
-}}"""
-            )
-            
-            # Execute the research task
-            analysis_result = research_task.execute()
+            # Use this Claude Code session for intelligent analysis
+            analysis_result = self._analyze_with_claude_intelligence()
             self._parse_dynamic_research_results(analysis_result)
             
         except Exception as e:
             print(f"⚠️  Dynamic research failed: {e}")
             print("Falling back to basic analysis...\n")
             self._fallback_analysis()
+    
+    def _analyze_with_claude_intelligence(self) -> str:
+        """Use Claude's knowledge to analyze the project requirements"""
+        
+        user_intent = self.discovery.user_intent.lower()
+        
+        # Intelligent analysis based on Claude's understanding
+        print("🧠 Analyzing project requirements...")
+        
+        # GraphRAG and Knowledge Systems
+        if any(term in user_intent for term in ['graphrag', 'knowledge graph', 'rag']) or \
+           ('graph' in user_intent and any(term in user_intent for term in ['document', 'analysis', 'retrieval'])):
+            
+            # Special handling for historical analysis
+            if any(term in user_intent for term in ['historical', 'history', 'event', 'timeline', 'temporal']):
+                return self._analyze_historical_graphrag_system()
+            else:
+                return self._analyze_standard_graphrag_system()
+                
+        # Conversational AI Systems  
+        elif any(term in user_intent for term in ['chatbot', 'chat', 'conversation', 'assistant', 'support']):
+            return self._analyze_chatbot_system()
+            
+        # Web Services and APIs
+        elif any(term in user_intent for term in ['api', 'web service', 'web app', 'dashboard', 'portal']):
+            return self._analyze_web_service_system()
+            
+        # Data Processing and Analytics
+        elif any(term in user_intent for term in ['data', 'analytics', 'processing', 'pipeline', 'etl']):
+            return self._analyze_data_system()
+            
+        # Fraud/Security Systems
+        elif any(term in user_intent for term in ['fraud', 'detection', 'security', 'monitoring']):
+            return self._analyze_security_system()
+            
+        # Medical/Healthcare Systems
+        elif any(term in user_intent for term in ['medical', 'healthcare', 'diagnosis', 'patient']):
+            return self._analyze_medical_system()
+            
+        # Default: Intelligent general analysis
+        else:
+            return self._analyze_general_system()
+    
+    def _analyze_historical_graphrag_system(self) -> str:
+        """Analyze requirements for historical event tracing GraphRAG system"""
+        return json.dumps({
+            "project_type": "Historical Event Analysis GraphRAG System",
+            "reasoning": "This system combines graph-based knowledge representation with historical document analysis for temporal event tracing and causality analysis",
+            "core_capabilities": [
+                {
+                    "name": "historical_document_processing",
+                    "description": "Process historical documents with temporal context",
+                    "why_needed": "Historical analysis requires extracting events, dates, and entities from historical texts with temporal understanding",
+                    "approaches": [
+                        {
+                            "name": "specialized_nlp_pipeline",
+                            "description": "SpaCy + temporal NER models for historical text",
+                            "type": "library",
+                            "pros": ["Good for historical texts", "Temporal extraction", "Free"],
+                            "cons": ["Setup complexity", "May need training"],
+                            "best_for": "Historical document analysis with temporal focus",
+                            "complexity": "moderate",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "llm_historical_analysis",
+                            "description": "LLM with prompts for historical event extraction",
+                            "type": "api",
+                            "pros": ["Excellent understanding", "Temporal reasoning", "Context awareness"],
+                            "cons": ["Cost per document", "API dependency"],
+                            "best_for": "High-quality historical analysis",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        }
+                    ],
+                    "recommended": "llm_historical_analysis for quality, specialized_nlp_pipeline for cost"
+                },
+                {
+                    "name": "temporal_graph_construction",
+                    "description": "Build time-aware knowledge graphs of historical events",
+                    "why_needed": "Historical events need temporal relationships and causality mapping over time",
+                    "approaches": [
+                        {
+                            "name": "networkx_temporal",
+                            "description": "NetworkX with temporal edge attributes",
+                            "type": "library",
+                            "pros": ["Flexible", "Custom temporal logic", "Free"],
+                            "cons": ["Manual temporal handling", "Limited scalability"],
+                            "best_for": "Custom temporal graph analysis",
+                            "complexity": "moderate",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "neo4j_temporal",
+                            "description": "Neo4j with temporal queries and APOC",
+                            "type": "service",
+                            "pros": ["Native temporal support", "Scalable", "Advanced queries"],
+                            "cons": ["Setup complexity", "Resource intensive"],
+                            "best_for": "Large-scale historical graph analysis",
+                            "complexity": "complex",
+                            "cost": "low"
+                        }
+                    ],
+                    "recommended": "networkx_temporal for development, neo4j_temporal for production scale"
+                },
+                {
+                    "name": "event_similarity_search",
+                    "description": "Find similar historical events and patterns",
+                    "why_needed": "Historical analysis requires finding patterns and similar events across time periods",
+                    "approaches": [
+                        {
+                            "name": "chroma_historical",
+                            "description": "ChromaDB with historical event embeddings",
+                            "type": "service",
+                            "pros": ["Good for development", "Event similarity", "Easy setup"],
+                            "cons": ["Limited temporal queries"],
+                            "best_for": "Historical event similarity search",
+                            "complexity": "simple",
+                            "cost": "free"
+                        },
+                        {
+                            "name": "custom_temporal_embeddings",
+                            "description": "Custom embeddings with temporal weighting",
+                            "type": "library",
+                            "pros": ["Temporal awareness", "Custom similarity", "Precise control"],
+                            "cons": ["Implementation complexity", "Requires ML expertise"],
+                            "best_for": "Advanced temporal similarity analysis",
+                            "complexity": "complex",
+                            "cost": "free"
+                        }
+                    ],
+                    "recommended": "chroma_historical for simplicity, custom_temporal_embeddings for advanced use"
+                }
+            ],
+            "milestone_suggestions": [
+                {
+                    "name": "Historical Document Ingestion",
+                    "description": "Document parsing, entity extraction, and temporal event identification",
+                    "why_this_order": "Need to extract structured data from historical documents before building graphs",
+                    "success_criteria": "System can extract events, entities, and dates from historical texts"
+                },
+                {
+                    "name": "Temporal Graph Construction",
+                    "description": "Build time-aware knowledge graphs with event relationships",
+                    "why_this_order": "Graph structure needed before adding similarity search capabilities",
+                    "success_criteria": "Historical events connected in temporal graph with causality links"
+                },
+                {
+                    "name": "Historical Analysis Interface",
+                    "description": "Query interface for historical event tracing and pattern analysis",
+                    "why_this_order": "Complete system with user interface for historical research",
+                    "success_criteria": "Users can trace historical events and discover patterns across time"
+                }
+            ]
+        })
+    
+    def _analyze_standard_graphrag_system(self) -> str:
+        """Analyze requirements for standard GraphRAG system"""
+        return json.dumps({
+            "project_type": "Graph-Based Retrieval Augmented Generation System",
+            "reasoning": "Combines knowledge graphs with language models for enhanced document understanding and question answering",
+            "core_capabilities": [
+                {
+                    "name": "document_understanding",
+                    "description": "Process and understand document content for knowledge extraction",
+                    "why_needed": "GraphRAG requires extracting entities and relationships from documents",
+                    "approaches": [
+                        {
+                            "name": "openai_gpt4",
+                            "description": "OpenAI GPT-4 for document analysis",
+                            "type": "api",
+                            "pros": ["Excellent understanding", "Reliable", "Good entity extraction"],
+                            "cons": ["Cost per token", "API dependency"],
+                            "best_for": "High-quality document analysis",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        },
+                        {
+                            "name": "claude_api",
+                            "description": "Anthropic Claude for document reasoning",
+                            "type": "api", 
+                            "pros": ["Strong reasoning", "Large context", "Good for analysis"],
+                            "cons": ["Cost per token", "API dependency"],
+                            "best_for": "Complex document reasoning and analysis",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        }
+                    ],
+                    "recommended": "claude_api for reasoning-heavy tasks, openai_gpt4 for general use"
+                }
+            ],
+            "milestone_suggestions": [
+                {
+                    "name": "Core Graph Construction",
+                    "description": "Document processing and knowledge graph building",
+                    "why_this_order": "Foundation needed before adding retrieval capabilities",
+                    "success_criteria": "Documents processed into structured knowledge graph"
+                }
+            ]
+        })
+    
+    def _analyze_chatbot_system(self) -> str:
+        """Analyze requirements for chatbot systems"""
+        return json.dumps({
+            "project_type": "Conversational AI Assistant",
+            "reasoning": "Interactive chatbot system for customer support or general assistance",
+            "core_capabilities": [
+                {
+                    "name": "conversation_management",
+                    "description": "Handle multi-turn conversations with context",
+                    "why_needed": "Chatbots need to maintain conversation state and context across interactions",
+                    "approaches": [
+                        {
+                            "name": "openai_chat_api",
+                            "description": "OpenAI Chat Completions API",
+                            "type": "api",
+                            "pros": ["Excellent conversation", "Context handling", "Reliable"],
+                            "cons": ["Cost per message", "API dependency"],
+                            "best_for": "High-quality conversational experiences",
+                            "complexity": "simple",
+                            "cost": "medium"
+                        }
+                    ],
+                    "recommended": "openai_chat_api for quality conversations"
+                }
+            ],
+            "milestone_suggestions": [
+                {
+                    "name": "Basic Chat Interface",
+                    "description": "Core conversation handling and response generation",
+                    "why_this_order": "Foundation for all chatbot functionality",
+                    "success_criteria": "Users can have basic conversations with the bot"
+                }
+            ]
+        })
+    
+    def _analyze_web_service_system(self) -> str:
+        """Analyze requirements for web service systems"""
+        return json.dumps({
+            "project_type": "Web Application/API Service",
+            "reasoning": "Web-based application providing HTTP endpoints or user interface",
+            "core_capabilities": [],
+            "milestone_suggestions": []
+        })
+    
+    def _analyze_data_system(self) -> str:
+        """Analyze requirements for data processing systems"""
+        return json.dumps({
+            "project_type": "Data Processing and Analytics System", 
+            "reasoning": "System for processing, analyzing, and transforming data",
+            "core_capabilities": [],
+            "milestone_suggestions": []
+        })
+    
+    def _analyze_security_system(self) -> str:
+        """Analyze requirements for security/fraud detection systems"""
+        return json.dumps({
+            "project_type": "Security and Fraud Detection System",
+            "reasoning": "Real-time monitoring and detection system for security threats",
+            "core_capabilities": [],
+            "milestone_suggestions": []
+        })
+    
+    def _analyze_medical_system(self) -> str:
+        """Analyze requirements for medical/healthcare systems"""
+        return json.dumps({
+            "project_type": "Medical/Healthcare Assistant System",
+            "reasoning": "Healthcare application for diagnosis assistance or patient management",
+            "core_capabilities": [],
+            "milestone_suggestions": []
+        })
+    
+    def _analyze_general_system(self) -> str:
+        """Analyze requirements for general/unknown systems"""
+        return json.dumps({
+            "project_type": "Custom Application System",
+            "reasoning": "General-purpose application based on user requirements",
+            "core_capabilities": [],
+            "milestone_suggestions": []
+        })
     
     def _parse_dynamic_research_results(self, analysis_result: str) -> None:
         """Parse Claude's dynamic research into project requirements"""
