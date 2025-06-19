@@ -1,0 +1,64 @@
+2025-06-19 12:48:56,916 - __main__ - INFO - 📝 V4 integration test logging to file: /home/brian/cc_automator4/tools/debug/logs/v4_integration_test_20250619_124856.txt
+2025-06-19 12:48:56,916 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 12:48:56,917 - __main__ - INFO - ============================================================
+2025-06-19 12:48:56,917 - __main__ - INFO - V4 SDK INTEGRATION TEST
+2025-06-19 12:48:56,917 - __main__ - INFO - ============================================================
+2025-06-19 12:48:56,917 - __main__ - INFO - 🎯 Goal: Validate V4 SDK integrates correctly into V3 system
+2025-06-19 12:48:56,917 - __main__ - INFO - 
+🧪 Running: Orchestrator V4 Status
+2025-06-19 12:48:56,917 - __main__ - INFO - 🧪 Testing orchestrator V4 integration status...
+2025-06-19 12:48:56,917 - __main__ - INFO - 📊 V3_SDK_AVAILABLE: True
+2025-06-19 12:48:56,917 - __main__ - INFO - 📊 V4_SDK_INTEGRATED: True
+2025-06-19 12:48:56,917 - __main__ - INFO - ✅ V4 SDK successfully integrated into V3 system
+2025-06-19 12:48:56,917 - __main__ - INFO - Orchestrator V4 Status: ✅ PASSED - V4 SDK integration status confirmed
+2025-06-19 12:48:56,917 - __main__ - INFO - 
+🧪 Running: Single Phase Execution
+2025-06-19 12:48:56,917 - __main__ - INFO - 🧪 Testing single phase execution with V4 SDK integration...
+2025-06-19 12:48:56,918 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_124856.txt
+2025-06-19 12:48:56,918 - src.claude_code_sdk_fixed_v4 - INFO - 🚀 Starting SDK query with V4 fixes (session: session_1750362536918)
+2025-06-19 12:48:56,918 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750362536918
+2025-06-19 12:48:57,581 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:00,493 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:01,541 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:01,668 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:10,983 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:11,041 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:15,348 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:15,398 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362536918)
+2025-06-19 12:49:15,408 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750362536918: module 'asyncio' has no attribute 'timeout'
+2025-06-19 12:49:15,408 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750362536918 cleaned up successfully
+2025-06-19 12:49:15,410 - __main__ - ERROR - ❌ Single phase execution failed: NameError: name 'start_metrics' is not defined
+2025-06-19 12:49:15,410 - __main__ - INFO - Single Phase Execution: ❌ FAILED - Single phase error: NameError: name 'start_metrics' is not defined
+2025-06-19 12:49:15,410 - __main__ - INFO - 
+🧪 Running: WebSearch Phase (TaskGroup Test)
+2025-06-19 12:49:15,410 - __main__ - INFO - 🧪 Testing WebSearch phase execution with V4 SDK...
+2025-06-19 12:49:15,411 - src.claude_code_sdk_fixed_v4 - INFO - 🚀 Starting SDK query with V4 fixes (session: session_1750362555411)
+2025-06-19 12:49:15,411 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750362555411
+2025-06-19 12:49:16,068 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:49:18,840 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:49:19,316 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:49:45,916 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:49:48,748 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:50:03,952 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:50:04,187 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:50:07,376 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:50:07,397 - src.claude_code_sdk_fixed_v4 - DEBUG - 📨 Message: unknown (session: session_1750362555411)
+2025-06-19 12:50:07,403 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750362555411: module 'asyncio' has no attribute 'timeout'
+2025-06-19 12:50:07,403 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750362555411 cleaned up successfully
+2025-06-19 12:50:07,405 - __main__ - ERROR - ❌ WebSearch phase execution failed: NameError: name 'start_metrics' is not defined
+2025-06-19 12:50:07,405 - __main__ - INFO - 💡 Non-TaskGroup error (may be acceptable): NameError
+2025-06-19 12:50:07,405 - __main__ - INFO - WebSearch Phase (TaskGroup Test): ❌ FAILED - WebSearch other error: NameError: name 'start_metrics' is not defined
+2025-06-19 12:50:07,405 - __main__ - INFO - 
+============================================================
+2025-06-19 12:50:07,405 - __main__ - INFO - V4 INTEGRATION TEST RESULTS
+2025-06-19 12:50:07,405 - __main__ - INFO - ============================================================
+2025-06-19 12:50:07,405 - __main__ - INFO - Orchestrator V4 Status: ✅ PASSED
+2025-06-19 12:50:07,405 - __main__ - INFO - Single Phase Execution: ❌ FAILED
+2025-06-19 12:50:07,405 - __main__ - INFO -   └─ Single phase error: NameError: name 'start_metrics' is not defined
+2025-06-19 12:50:07,405 - __main__ - INFO - WebSearch Phase (TaskGroup Test): ❌ FAILED
+2025-06-19 12:50:07,405 - __main__ - INFO -   └─ WebSearch other error: NameError: name 'start_metrics' is not defined
+2025-06-19 12:50:07,405 - __main__ - INFO - 
+Overall: 1/3 tests passed
+2025-06-19 12:50:07,405 - __main__ - INFO - 📝 Full logs saved to: /home/brian/cc_automator4/tools/debug/logs/v4_integration_test_20250619_124856.txt
+2025-06-19 12:50:07,405 - __main__ - INFO - 🚨 V4 SDK integration has ISSUES
+2025-06-19 12:50:07,406 - __main__ - INFO - 🔍 Review the error details above

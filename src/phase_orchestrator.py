@@ -17,26 +17,39 @@ from enum import Enum
 import asyncio
 import anyio
 import psutil  # For resource monitoring
-# Use V3 SDK wrapper with TaskGroup fixes and pure SDK implementation
+# Use V4 SDK wrapper with ACTUAL TaskGroup fixes (not masking)
 try:
-    from .claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
-    print("✅ Using V3 SDK wrapper (TaskGroup issues resolved, pure SDK)")
+    from .claude_code_sdk_fixed_v4 import query_v4_fixed as query_v3, ClaudeCodeOptions, get_v4_fixed_wrapper
+    # V4 SDK re-exports everything from original SDK including Message
+    from claude_code_sdk import Message
+    print("✅ Using V4 SDK wrapper (ACTUAL TaskGroup cleanup fixes)")
     V3_SDK_AVAILABLE = True
+    V4_SDK_INTEGRATED = True
 except ImportError:
     try:
-        # Try absolute import for V3
-        from claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
-        print("✅ Using V3 SDK wrapper via absolute import (TaskGroup issues resolved, pure SDK)")
+        # Fallback to V3 wrapper with error masking
+        from .claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
+        print("⚠️  Fallback to V3 SDK wrapper (error masking, not ideal)")
         V3_SDK_AVAILABLE = True
+        V4_SDK_INTEGRATED = False
     except ImportError:
         try:
-            from .claude_code_sdk_fixed_v2 import query, ClaudeCodeOptions, Message
-            print("⚠️  Fallback to V2 SDK wrapper (TaskGroup issues remain)")
-            V3_SDK_AVAILABLE = False
+            # Try absolute import for V3
+            from claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
+            print("⚠️  Using V3 SDK wrapper via absolute import (error masking)")
+            V3_SDK_AVAILABLE = True
+            V4_SDK_INTEGRATED = False
         except ImportError:
-            from claude_code_sdk import query, ClaudeCodeOptions, Message
-            print("⚠️  Using original SDK (may encounter errors)")
-            V3_SDK_AVAILABLE = False
+            try:
+                from .claude_code_sdk_fixed_v2 import query, ClaudeCodeOptions, Message
+                print("⚠️  Fallback to V2 SDK wrapper (TaskGroup issues remain)")
+                V3_SDK_AVAILABLE = False
+                V4_SDK_INTEGRATED = False
+            except ImportError:
+                from claude_code_sdk import query, ClaudeCodeOptions, Message
+                print("⚠️  Using original SDK (may encounter errors)")
+                V3_SDK_AVAILABLE = False
+                V4_SDK_INTEGRATED = False
 
 
 class PhaseStatus(Enum):
@@ -502,10 +515,21 @@ Write to it: PHASE_COMPLETE"""
             return None  # None means use default (Opus)
     
     async def _execute_query_with_wrapper(self, prompt: str, options: ClaudeCodeOptions) -> List[Any]:
-        """Execute query using V3 wrapper if available, fallback to original SDK"""
+        """Execute query using V4/V3 wrapper if available, fallback to original SDK"""
         messages = []
-        query_func = query_v3 if V3_SDK_AVAILABLE else query
-        query_args = (prompt, options, self.working_dir, self.verbose) if V3_SDK_AVAILABLE else (prompt, options)
+        
+        if V3_SDK_AVAILABLE:
+            query_func = query_v3
+            # V4 SDK requires working_dir and verbose parameters
+            query_args = (prompt, options, self.working_dir, self.verbose)
+            
+            if self.verbose and 'V4_SDK_INTEGRATED' in globals() and V4_SDK_INTEGRATED:
+                print(f"🔧 Using V4 SDK with TaskGroup fixes for phase execution")
+        else:
+            query_func = query
+            query_args = (prompt, options)
+            if self.verbose:
+                print(f"⚠️ Using original SDK (may have TaskGroup issues)")
         
         async for message in query_func(*query_args):
             messages.append(message)
@@ -576,8 +600,13 @@ Write to it: PHASE_COMPLETE"""
         
         try:
             # Execute query with V3 SDK wrapper or fallback to original
-            query_func = query_v3 if V3_SDK_AVAILABLE else query
-            query_args = (phase.prompt, options, self.working_dir, self.verbose) if V3_SDK_AVAILABLE else (phase.prompt, options)
+            if V3_SDK_AVAILABLE:
+                query_func = query_v3
+                # V4/V3 SDK requires working_dir and verbose parameters
+                query_args = (phase.prompt, options, self.working_dir, self.verbose)
+            else:
+                query_func = query
+                query_args = (phase.prompt, options)
             
             async for message in query_func(*query_args):
                 messages.append(message)

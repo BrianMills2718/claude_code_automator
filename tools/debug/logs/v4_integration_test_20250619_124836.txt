@@ -1,0 +1,2 @@
+2025-06-19 12:48:36,041 - __main__ - INFO - 📝 V4 integration test logging to file: /home/brian/cc_automator4/tools/debug/logs/v4_integration_test_20250619_124836.txt
+2025-06-19 12:48:36,042 - asyncio - DEBUG - Using selector: EpollSelector
