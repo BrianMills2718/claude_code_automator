@@ -6,7 +6,6 @@ import tenacity
 
 from src.data_sources.yahoo_finance import YahooFinanceAdapter
 from src.data_sources.base import MarketData
-from src.data_sources.exceptions import APIError
 
 
 class TestYahooFinanceAdapter:
@@ -36,10 +35,6 @@ class TestYahooFinanceAdapter:
 
     def test_create_market_data(self, adapter: YahooFinanceAdapter) -> None:
         """Test market data creation from row data."""
-        try:
-            import pandas as pd
-        except ImportError:
-            pytest.skip("pandas not available")
         
         # Create a mock row
         row_data = {
@@ -140,10 +135,6 @@ class TestYahooFinanceAdapter:
 
     def test_create_market_data_edge_cases(self, adapter: YahooFinanceAdapter) -> None:
         """Test market data creation edge cases."""
-        try:
-            import pandas as pd
-        except ImportError:
-            pytest.skip("pandas not available")
         
         # Test with zero volume
         row_data = {

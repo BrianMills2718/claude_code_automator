@@ -55,19 +55,28 @@ def remove_price_outliers(
     """Remove price outliers using rolling statistics."""
     if len(df) < window:
         return df
-        
-    # Calculate rolling mean and std of close prices
-    rolling_mean = df['close'].rolling(window=window, center=True).mean()
-    rolling_std = df['close'].rolling(window=window, center=True).std()
+    
+    # Make a copy to avoid modifying the original
+    df_copy = df.copy()
+    
+    # Calculate rolling mean and std of close prices (not centered to avoid NaN)
+    rolling_mean = df_copy['close'].rolling(window=window, min_periods=1).mean()
+    rolling_std = df_copy['close'].rolling(window=window, min_periods=1).std()
+    
+    # For the first few points, use expanding window
+    rolling_mean[:window-1] = df_copy['close'][:window-1].expanding().mean()
+    rolling_std[:window-1] = df_copy['close'][:window-1].expanding().std()
     
     # Create bands
     upper_band = rolling_mean + (rolling_std * std_threshold)
     lower_band = rolling_mean - (rolling_std * std_threshold)
     
-    # Remove outliers
-    df = df[
-        (df['close'] >= lower_band) &
-        (df['close'] <= upper_band)
-    ]
+    # Remove outliers - only remove if both bands are valid
+    valid_mask = (
+        (df_copy['close'] >= lower_band) &
+        (df_copy['close'] <= upper_band) &
+        rolling_std.notna() &
+        rolling_mean.notna()
+    )
     
-    return df
+    return df_copy[valid_mask]

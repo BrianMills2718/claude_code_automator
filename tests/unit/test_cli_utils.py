@@ -2,7 +2,6 @@ import pytest
 from datetime import datetime
 import pandas as pd  # type: ignore[import-untyped]
 from unittest.mock import patch
-from io import StringIO
 
 from src.cli.utils import (
     display_market_data,

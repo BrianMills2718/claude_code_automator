@@ -3,6 +3,18 @@ import os
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
+# Configuration constants
+DEFAULT_POSTGRES_HOST = "localhost"
+DEFAULT_POSTGRES_PORT = 5432
+DEFAULT_POSTGRES_DB = "portfolio_analyzer"
+DEFAULT_POSTGRES_USER = "postgres"
+DEFAULT_REDIS_HOST = "localhost"
+DEFAULT_REDIS_PORT = 6379
+DEFAULT_REDIS_DB = 0
+DEFAULT_SQLITE_DB = "sqlite:///portfolio_data.db"
+DEFAULT_REDIS_URL_TEMPLATE = "redis://{host}:{port}/{db}"
+REDIS_URL_SCHEME = "redis://"
+
 class Settings(BaseSettings):
     # Data Source Settings
     ALPHA_VANTAGE_API_KEY: Optional[SecretStr] = None
@@ -15,17 +27,17 @@ class Settings(BaseSettings):
     YAHOO_FINANCE_BACKOFF_MAX: int = 60  # seconds
     
     # Database Settings
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "portfolio_analyzer"
-    POSTGRES_USER: str = "postgres"
+    POSTGRES_HOST: str = DEFAULT_POSTGRES_HOST
+    POSTGRES_PORT: int = DEFAULT_POSTGRES_PORT
+    POSTGRES_DB: str = DEFAULT_POSTGRES_DB
+    POSTGRES_USER: str = DEFAULT_POSTGRES_USER
     POSTGRES_PASSWORD: SecretStr
     DATABASE_URL: Optional[str] = None
     
     # Redis Settings
-    REDIS_HOST: str = "localhost"
-    REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
+    REDIS_HOST: str = DEFAULT_REDIS_HOST
+    REDIS_PORT: int = DEFAULT_REDIS_PORT
+    REDIS_DB: int = DEFAULT_REDIS_DB
     REDIS_URL: Optional[str] = None
     
     # Logging
@@ -46,7 +58,11 @@ class Settings(BaseSettings):
             
     def _init_redis_url(self) -> None:
         if not self.REDIS_URL:
-            self.REDIS_URL = f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/{self.REDIS_DB}"
+            self.REDIS_URL = DEFAULT_REDIS_URL_TEMPLATE.format(
+                host=self.REDIS_HOST, 
+                port=self.REDIS_PORT, 
+                db=self.REDIS_DB
+            )
     
     class Config:
         env_file = ".env"
@@ -67,12 +83,17 @@ def get_api_key(source: str) -> Optional[str]:
 
 def get_database_url() -> str:
     """Get database URL from environment or default."""
-    return os.environ.get('DATABASE_URL', 'sqlite:///portfolio_data.db')
+    return os.environ.get('DATABASE_URL', DEFAULT_SQLITE_DB)
 
 
 def get_redis_url() -> str:
     """Get Redis URL from environment or default."""
-    return os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+    default_url = DEFAULT_REDIS_URL_TEMPLATE.format(
+        host=DEFAULT_REDIS_HOST,
+        port=DEFAULT_REDIS_PORT,
+        db=DEFAULT_REDIS_DB
+    )
+    return os.environ.get('REDIS_URL', default_url)
 
 
 def get_data_source_config() -> Dict[str, Any]:
@@ -114,7 +135,7 @@ def validate_config(config: Dict[str, Any]) -> bool:
     if not redis_url or not isinstance(redis_url, str):
         raise ValueError("Invalid Redis URL")
     
-    if not redis_url.startswith('redis://'):
+    if not redis_url.startswith(REDIS_URL_SCHEME):
         raise ValueError("Invalid Redis URL scheme")
     
     # Validate data sources

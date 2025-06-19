@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, model_validator
 
 class StockPrice(BaseModel):
     """Stock price data validation model."""
@@ -13,18 +13,21 @@ class StockPrice(BaseModel):
     volume: int = Field(..., ge=0)
     source: str
     
-    @validator('high')
-    def high_greater_than_low(cls, v: float, values: Dict[str, Any]) -> float:
-        if 'low' in values and v < values['low']:
+    @model_validator(mode='after')
+    def validate_price_ranges(self) -> 'StockPrice':
+        """Validate that all price values are consistent."""
+        # High must be greater than or equal to low
+        if self.high < self.low:
             raise ValueError('high must be greater than low')
-        return v
         
-    @validator('open', 'close')
-    def price_within_range(cls, v: float, values: Dict[str, Any]) -> float:
-        if 'high' in values and 'low' in values:
-            if v > values['high'] or v < values['low']:
-                raise ValueError('price must be within high-low range')
-        return v
+        # Open and close must be within high-low range
+        if self.open > self.high or self.open < self.low:
+            raise ValueError('price must be within high-low range')
+        
+        if self.close > self.high or self.close < self.low:
+            raise ValueError('price must be within high-low range')
+            
+        return self
 
 class TimeSeriesRequest(BaseModel):
     """Time series data request validation."""
