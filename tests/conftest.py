@@ -1,14 +1,19 @@
 import pytest
 import asyncio
 from datetime import datetime, timedelta
-from typing import List
-from unittest.mock import Mock, AsyncMock
+from typing import List, Dict, Any, Generator
+from unittest.mock import Mock
 
 from src.data_sources.base import MarketData
 
+try:
+    import pandas as pd  # type: ignore[import-untyped]
+except ImportError:
+    pd = None
+
 
 @pytest.fixture
-def event_loop():
+def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     """Create an instance of the default event loop for the test session."""
     loop = asyncio.get_event_loop_policy().new_event_loop()
     yield loop
@@ -35,9 +40,10 @@ def sample_market_data() -> List[MarketData]:
 
 
 @pytest.fixture
-def mock_yahoo_finance_data():
+def mock_yahoo_finance_data() -> Any:
     """Mock Yahoo Finance API response data."""
-    import pandas as pd
+    if pd is None:
+        raise ImportError("pandas is required for mock_yahoo_finance_data fixture")
     
     dates = pd.date_range(start='2023-01-01', periods=5, freq='D')
     return pd.DataFrame({
@@ -50,7 +56,7 @@ def mock_yahoo_finance_data():
 
 
 @pytest.fixture
-def mock_alpha_vantage_data():
+def mock_alpha_vantage_data() -> Dict[str, Dict[str, Dict[str, str]]]:
     """Mock Alpha Vantage API response data."""
     return {
         'Time Series (Daily)': {
@@ -73,7 +79,7 @@ def mock_alpha_vantage_data():
 
 
 @pytest.fixture
-def mock_search_results():
+def mock_search_results() -> List[Dict[str, str]]:
     """Mock symbol search results."""
     return [
         {
@@ -92,7 +98,7 @@ def mock_search_results():
 
 
 @pytest.fixture
-def mock_database_session():
+def mock_database_session() -> Mock:
     """Mock database session for testing."""
     session = Mock()
     session.merge = Mock()
@@ -103,7 +109,7 @@ def mock_database_session():
 
 
 @pytest.fixture
-def mock_redis_cache():
+def mock_redis_cache() -> Mock:
     """Mock Redis cache for testing."""
     cache = Mock()
     cache.get = Mock(return_value=None)

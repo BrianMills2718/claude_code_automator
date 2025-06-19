@@ -1,13 +1,13 @@
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from datetime import date, datetime
+from typing import Any
 
 from src.data_sources.yahoo_finance import YahooFinanceAdapter
-from src.data_sources.exceptions import APIError
 
 
 @pytest.fixture
-def yahoo_adapter():
+def yahoo_adapter() -> YahooFinanceAdapter:
     """Create Yahoo Finance adapter for testing."""
     return YahooFinanceAdapter()
 
@@ -15,7 +15,7 @@ def yahoo_adapter():
 class TestYahooFinanceAdapter:
     """Test Yahoo Finance adapter functionality."""
 
-    def test_create_market_data(self, yahoo_adapter):
+    def test_create_market_data(self, yahoo_adapter: YahooFinanceAdapter) -> None:
         """Test market data creation from DataFrame row."""
         symbol = "AAPL"
         timestamp = datetime(2023, 1, 1, 9, 30)
@@ -44,7 +44,7 @@ class TestYahooFinanceAdapter:
 
     @pytest.mark.asyncio
     @patch('src.data_sources.yahoo_finance.yf.Ticker')
-    async def test_get_daily_prices_success(self, mock_ticker, yahoo_adapter, mock_yahoo_finance_data):
+    async def test_get_daily_prices_success(self, mock_ticker: Any, yahoo_adapter: YahooFinanceAdapter, mock_yahoo_finance_data: Any) -> None:
         """Test successful daily price retrieval."""
         # Setup mock
         mock_ticker_instance = Mock()
@@ -67,20 +67,21 @@ class TestYahooFinanceAdapter:
 
     @pytest.mark.asyncio
     @patch('src.data_sources.yahoo_finance.yf.Ticker')
-    async def test_get_daily_prices_api_error(self, mock_ticker, yahoo_adapter):
+    async def test_get_daily_prices_api_error(self, mock_ticker: Any, yahoo_adapter: YahooFinanceAdapter) -> None:
         """Test API error handling in daily price retrieval."""
         # Setup mock to raise exception
         mock_ticker_instance = Mock()
         mock_ticker_instance.history.side_effect = Exception("API Error")
         mock_ticker.return_value = mock_ticker_instance
         
-        # Test
-        with pytest.raises(APIError):
+        # Test - expect RetryError since the method has @retry decorator
+        from tenacity import RetryError
+        with pytest.raises(RetryError):
             await yahoo_adapter.get_daily_prices("AAPL")
 
     @pytest.mark.asyncio
     @patch('src.data_sources.yahoo_finance.yf.Ticker')
-    async def test_get_intraday_prices_success(self, mock_ticker, yahoo_adapter, mock_yahoo_finance_data):
+    async def test_get_intraday_prices_success(self, mock_ticker: Any, yahoo_adapter: YahooFinanceAdapter, mock_yahoo_finance_data: Any) -> None:
         """Test successful intraday price retrieval."""
         # Setup mock
         mock_ticker_instance = Mock()
@@ -96,7 +97,7 @@ class TestYahooFinanceAdapter:
         mock_ticker_instance.history.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_search_symbols(self, yahoo_adapter):
+    async def test_search_symbols(self, yahoo_adapter: YahooFinanceAdapter) -> None:
         """Test symbol search functionality."""
         # Yahoo Finance adapter doesn't implement search
         # This should return empty list or raise NotImplementedError

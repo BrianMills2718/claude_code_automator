@@ -1,13 +1,14 @@
 import pytest
 from unittest.mock import Mock, AsyncMock
-from datetime import datetime, date
+from datetime import datetime
+from typing import List
 
 from src.processing.pipeline import DataPipeline
 from src.data_sources.base import MarketData
 
 
 @pytest.fixture
-def mock_data_source():
+def mock_data_source() -> Mock:
     """Create mock data source."""
     source = Mock()
     source.get_daily_prices = AsyncMock()
@@ -17,7 +18,7 @@ def mock_data_source():
 
 
 @pytest.fixture
-def sample_pipeline_data():
+def sample_pipeline_data() -> List[MarketData]:
     """Create sample data for pipeline testing."""
     return [
         MarketData(
@@ -36,21 +37,21 @@ def sample_pipeline_data():
 class TestDataPipeline:
     """Test DataPipeline functionality."""
 
-    def test_pipeline_initialization(self, mock_data_source):
+    def test_pipeline_initialization(self, mock_data_source: Mock) -> None:
         """Test pipeline initialization with data sources."""
         pipeline = DataPipeline([mock_data_source])
         
         assert len(pipeline.data_sources) == 1
         assert pipeline.data_sources[0] == mock_data_source
 
-    def test_pipeline_initialization_empty(self):
+    def test_pipeline_initialization_empty(self) -> None:
         """Test pipeline initialization with empty sources."""
         pipeline = DataPipeline([])
         
         assert len(pipeline.data_sources) == 0
 
     @pytest.mark.asyncio
-    async def test_fetch_data_success(self, mock_data_source, sample_pipeline_data):
+    async def test_fetch_data_success(self, mock_data_source: Mock, sample_pipeline_data: List[MarketData]) -> None:
         """Test successful data fetching."""
         # Setup mock
         mock_data_source.get_daily_prices.return_value = sample_pipeline_data
@@ -66,12 +67,13 @@ class TestDataPipeline:
         
         # Verify
         assert response.success is True
+        assert response.data is not None
         assert len(response.data) == 1
         assert response.data[0].symbol == "AAPL"
         assert response.error is None
 
     @pytest.mark.asyncio
-    async def test_fetch_data_with_interval(self, mock_data_source, sample_pipeline_data):
+    async def test_fetch_data_with_interval(self, mock_data_source: Mock, sample_pipeline_data: List[MarketData]) -> None:
         """Test data fetching with intraday interval."""
         # Setup mock
         mock_data_source.get_intraday_prices.return_value = sample_pipeline_data
@@ -88,10 +90,10 @@ class TestDataPipeline:
         
         # Verify
         assert response.success is True
-        mock_data_source.get_intraday_prices.assert_called_once_with("AAPL", 5, None)
+        mock_data_source.get_intraday_prices.assert_called_once_with(symbol="AAPL", interval=5)
 
     @pytest.mark.asyncio
-    async def test_fetch_data_source_failure(self, mock_data_source):
+    async def test_fetch_data_source_failure(self, mock_data_source: Mock) -> None:
         """Test data fetching with source failure."""
         # Setup mock to fail
         mock_data_source.get_daily_prices.side_effect = Exception("API Error")
@@ -108,10 +110,10 @@ class TestDataPipeline:
         # Verify
         assert response.success is False
         assert response.error is not None
-        assert "API Error" in response.error
+        assert response.error is not None and "API Error" in response.error
 
     @pytest.mark.asyncio
-    async def test_fetch_data_multiple_sources(self, sample_pipeline_data):
+    async def test_fetch_data_multiple_sources(self, sample_pipeline_data: List[MarketData]) -> None:
         """Test data fetching with multiple sources."""
         # Create multiple mock sources
         source1 = Mock()
@@ -132,10 +134,11 @@ class TestDataPipeline:
         # Verify
         assert response.success is True
         # Should combine data from both sources
+        assert response.data is not None
         assert len(response.data) >= 1
 
     @pytest.mark.asyncio
-    async def test_fetch_data_no_sources(self):
+    async def test_fetch_data_no_sources(self) -> None:
         """Test data fetching with no sources."""
         pipeline = DataPipeline([])
         
@@ -148,4 +151,4 @@ class TestDataPipeline:
         
         # Verify
         assert response.success is False
-        assert "No data sources" in response.error
+        assert response.error is not None and "No data sources" in response.error

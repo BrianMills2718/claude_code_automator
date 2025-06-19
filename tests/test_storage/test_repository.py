@@ -1,6 +1,5 @@
-import pytest
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from typing import Any, List
+from unittest.mock import Mock, patch
 
 from src.storage.repository import DataRepository
 from src.data_sources.base import MarketData
@@ -11,7 +10,7 @@ class TestDataRepository:
 
     @patch('src.storage.repository.create_engine')
     @patch('src.storage.repository.RedisCache')
-    def test_repository_initialization_success(self, mock_redis, mock_create_engine):
+    def test_repository_initialization_success(self, mock_redis: Any, mock_create_engine: Any) -> None:
         """Test successful repository initialization."""
         # Setup mocks
         mock_engine = Mock()
@@ -29,7 +28,7 @@ class TestDataRepository:
 
     @patch('src.storage.repository.create_engine')
     @patch('src.storage.repository.RedisCache')
-    def test_repository_initialization_db_failure(self, mock_redis, mock_create_engine):
+    def test_repository_initialization_db_failure(self, mock_redis: Any, mock_create_engine: Any) -> None:
         """Test repository initialization with database failure."""
         # Setup mocks
         mock_create_engine.side_effect = Exception("DB Connection Failed")
@@ -46,7 +45,7 @@ class TestDataRepository:
 
     @patch('src.storage.repository.create_engine')
     @patch('src.storage.repository.RedisCache')
-    def test_repository_initialization_cache_failure(self, mock_redis, mock_create_engine):
+    def test_repository_initialization_cache_failure(self, mock_redis: Any, mock_create_engine: Any) -> None:
         """Test repository initialization with cache failure."""
         # Setup mocks
         mock_engine = Mock()
@@ -61,7 +60,7 @@ class TestDataRepository:
         assert repo.Session is not None
         assert repo.cache is None
 
-    def test_save_market_data_no_database(self, sample_market_data):
+    def test_save_market_data_no_database(self, sample_market_data: List[MarketData]) -> None:
         """Test saving market data when database is unavailable."""
         # Create repository with no database
         repo = DataRepository()
@@ -74,7 +73,7 @@ class TestDataRepository:
 
     @patch('src.storage.repository.create_engine')
     @patch('src.storage.repository.RedisCache')
-    def test_save_market_data_success(self, mock_redis, mock_create_engine, sample_market_data):
+    def test_save_market_data_success(self, mock_redis: Any, mock_create_engine: Any, sample_market_data: List[MarketData]) -> None:
         """Test successful market data saving."""
         # Setup mocks
         mock_engine = Mock()
@@ -100,7 +99,7 @@ class TestDataRepository:
         assert mock_session.merge.call_count == len(sample_market_data)
         mock_session.commit.assert_called_once()
 
-    def test_get_market_data_no_database(self):
+    def test_get_market_data_no_database(self) -> None:
         """Test getting market data when database is unavailable."""
         # Create repository with no database
         repo = DataRepository()
@@ -114,7 +113,7 @@ class TestDataRepository:
 
     @patch('src.storage.repository.create_engine')
     @patch('src.storage.repository.RedisCache')
-    def test_get_market_data_success(self, mock_redis, mock_create_engine, sample_market_data):
+    def test_get_market_data_success(self, mock_redis: Any, mock_create_engine: Any, sample_market_data: List[MarketData]) -> None:
         """Test successful market data retrieval."""
         # Setup mocks
         mock_engine = Mock()
@@ -147,6 +146,7 @@ class TestDataRepository:
         mock_session_maker = Mock(return_value=mock_session)
         
         mock_cache = Mock()
+        mock_cache.get_market_data.return_value = None  # Cache miss
         mock_redis.return_value = mock_cache
         
         # Create repository

@@ -1,12 +1,12 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 
-Base = declarative_base()
+Base: Any = declarative_base()
 
-class MarketDataModel(Base):
+class MarketDataModel(Base):  # type: ignore[misc]
     """SQLAlchemy model for market data."""
     __tablename__ = 'market_data'
     
@@ -26,5 +26,5 @@ class MarketDataModel(Base):
                         name='uix_market_data_symbol_timestamp_source'),
     )
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<MarketData(symbol='{self.symbol}', timestamp='{self.timestamp}')>"

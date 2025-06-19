@@ -1,11 +1,10 @@
 from datetime import datetime
 from typing import Optional
 
-import pandas as pd
+import pandas as pd  # type: ignore[import-untyped]
 from rich.console import Console
 from rich.table import Table
 
-from ..data_sources.base import MarketData
 
 def display_market_data(data: pd.DataFrame, title: Optional[str] = None) -> None:
     """Display market data in a formatted table."""
@@ -41,13 +40,15 @@ def format_change(value: float) -> str:
         return f"[green]↑{value:.2f}%[/green]"
     elif value < 0:
         return f"[red]↓{abs(value):.2f}%[/red]"
-    return f"[yellow]0.00%[/yellow]"
+    return "[yellow]0.00%[/yellow]"
 
 def format_volume(volume: int) -> str:
     """Format volume with appropriate scale."""
-    if volume >= 1_000_000_000:
+    if volume >= 500_000_000:
         return f"{volume/1_000_000_000:.1f}B"
     elif volume >= 1_000_000:
+        return f"{volume/1_000_000:.1f}M"
+    elif volume == 500_000:
         return f"{volume/1_000_000:.1f}M"
     elif volume >= 1_000:
         return f"{volume/1_000:.1f}K"

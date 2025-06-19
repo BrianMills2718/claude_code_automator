@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from datetime import date, datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
-import pandas as pd
 from pydantic import BaseModel, ConfigDict
 
 class MarketData(BaseModel):

@@ -1,5 +1,4 @@
-from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Optional
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 
@@ -27,7 +26,7 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
     
-    def __init__(self, **kwargs):
+    def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self._init_database_url()
         self._init_redis_url()
@@ -47,4 +46,4 @@ class Settings(BaseSettings):
         env_file = ".env"
         case_sensitive = True
 
-settings = Settings()  # type: ignore
+settings = Settings()

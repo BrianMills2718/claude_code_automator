@@ -1,13 +1,13 @@
 import pytest
 from datetime import datetime
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
 from src.storage.models import Base, MarketDataModel
 
 
 @pytest.fixture
-def in_memory_db():
+def in_memory_db() -> Session:
     """Create in-memory SQLite database for testing."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -18,7 +18,7 @@ def in_memory_db():
 class TestMarketDataModel:
     """Test MarketDataModel functionality."""
 
-    def test_market_data_model_creation(self, in_memory_db):
+    def test_market_data_model_creation(self, in_memory_db: Session) -> None:
         """Test MarketDataModel creation and persistence."""
         # Create model instance
         market_data = MarketDataModel(
@@ -42,7 +42,7 @@ class TestMarketDataModel:
         assert market_data.volume == 1000000
         assert market_data.source == "test"
 
-    def test_market_data_model_persistence(self, in_memory_db):
+    def test_market_data_model_persistence(self, in_memory_db: Session) -> None:
         """Test saving and retrieving MarketDataModel."""
         # Create and save model
         market_data = MarketDataModel(
@@ -65,7 +65,7 @@ class TestMarketDataModel:
         assert retrieved.symbol == "AAPL"
         assert retrieved.close == 102.0
 
-    def test_market_data_model_uniqueness(self, in_memory_db):
+    def test_market_data_model_uniqueness(self, in_memory_db: Session) -> None:
         """Test unique constraint on symbol, timestamp, source."""
         # Create first record
         market_data1 = MarketDataModel(

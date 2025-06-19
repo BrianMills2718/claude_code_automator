@@ -1,8 +1,8 @@
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Any
 import logging
 from dataclasses import dataclass
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.sql import select
 
@@ -22,23 +22,27 @@ class QueryFilters:
 class DataRepository:
     """Data access layer for market data."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         try:
-            self.engine = create_engine(settings.DATABASE_URL)
+            if settings.DATABASE_URL is None:
+                raise ValueError("DATABASE_URL is not configured")
+            self.engine: Optional[Engine] = create_engine(settings.DATABASE_URL)
             Base.metadata.create_all(self.engine)
-            self.Session = sessionmaker(bind=self.engine)
+            self.Session: Optional[sessionmaker[Session]] = sessionmaker(bind=self.engine)
         except Exception as e:
             logging.warning(f"Database connection failed: {str(e)}. Data will not be persisted.")
             self.engine = None
             self.Session = None
         try:
-            self.cache = RedisCache()
+            self.cache: Optional[RedisCache] = RedisCache()
         except Exception as e:
             logging.warning(f"Redis connection failed: {str(e)}. Cache will be disabled.")
             self.cache = None
         
     def _get_session(self) -> Session:
         """Get a new database session."""
+        if self.Session is None:
+            raise ValueError("Database session is not available")
         return self.Session()
         
     def save_market_data(self, data: List[MarketData]) -> None:
@@ -82,24 +86,37 @@ class DataRepository:
             
         return query.order_by(MarketDataModel.timestamp)
 
+    def _extract_timestamp_value(self, row: MarketDataModel) -> datetime:
+        """Extract datetime value from SQLAlchemy model with type conversion."""
+        timestamp_value = getattr(row, 'timestamp')
+        if isinstance(timestamp_value, str):
+            timestamp_value = datetime.fromisoformat(timestamp_value)
+        elif not isinstance(timestamp_value, datetime):
+            raise TypeError(f"Expected datetime or str, got {type(timestamp_value)}")
+        return timestamp_value
+
     def _create_market_data(self, row: MarketDataModel) -> MarketData:
         """Create MarketData instance from database row."""
+        timestamp_value = self._extract_timestamp_value(row)
+        
         return MarketData(
-            symbol=row.symbol,
-            timestamp=row.timestamp,
-            open=row.open,
-            high=row.high,
-            low=row.low,
-            close=row.close,
-            volume=row.volume,
-            source=row.source
+            symbol=str(row.symbol),
+            timestamp=timestamp_value,
+            open=float(row.open),
+            high=float(row.high),
+            low=float(row.low),
+            close=float(row.close),
+            volume=int(row.volume),
+            source=str(row.source)
         )
 
     def _get_or_create_market_data(self, row: MarketDataModel) -> MarketData:
         """Get data from cache or create from DB row."""
+        timestamp_value = self._extract_timestamp_value(row)
+        
         if self.cache:
-            key = MarketDataKey(row.symbol, row.source, row.timestamp)
-            cached_data = self.cache.get_market_data(row.symbol, row.source, row.timestamp)
+            key = MarketDataKey(str(row.symbol), str(row.source), timestamp_value)
+            cached_data = self.cache.get_market_data(str(row.symbol), str(row.source), timestamp_value)
             
             if cached_data:
                 return MarketData(**cached_data)
@@ -107,7 +124,7 @@ class DataRepository:
         data = self._create_market_data(row)
         
         if self.cache:
-            key = MarketDataKey(row.symbol, row.source, row.timestamp)
+            key = MarketDataKey(str(row.symbol), str(row.source), timestamp_value)
             config = MarketDataConfig(key=key, data=data.model_dump())
             self.cache.set_market_data(config)
             

@@ -1,7 +1,7 @@
 import json
-from typing import Any, Optional, List
+from typing import Any, Optional, List, Dict
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
 import redis
 from .. import settings
@@ -21,13 +21,13 @@ class MarketDataKey:
 class MarketDataConfig:
     """Market data configuration."""
     key: MarketDataKey
-    data: dict
+    data: Dict[str, Any]
     expiration: int = 3600
 
 class RedisCache:
     """Redis cache implementation."""
     
-    def __init__(self):
+    def __init__(self) -> None:
         self.redis = redis.Redis(
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
@@ -41,7 +41,8 @@ class RedisCache:
         
     def get(self, key: str) -> Optional[str]:
         """Get value from cache."""
-        return self.redis.get(self._build_key([key]))
+        result = self.redis.get(self._build_key([key]))
+        return result if isinstance(result, str) else None
         
     def set(
         self,
@@ -80,7 +81,7 @@ class RedisCache:
         symbol: str,
         source: str,
         timestamp: datetime
-    ) -> Optional[dict]:
+    ) -> Optional[Dict[str, Any]]:
         """Get market data from cache."""
         key = MarketDataKey(symbol, source, timestamp)
         return self.get_json(key.to_string())
@@ -93,7 +94,7 @@ class RedisCache:
         self,
         query: str,
         source: str
-    ) -> Optional[List[dict]]:
+    ) -> Optional[List[Dict[str, Any]]]:
         """Get symbol search results from cache."""
         key = f"search:{query}:{source}"
         return self.get_json(key)
@@ -102,7 +103,7 @@ class RedisCache:
         self,
         query: str,
         source: str,
-        results: List[dict],
+        results: List[Dict[str, Any]],
         expiration: int = 3600  # 1 hour
     ) -> None:
         """Cache symbol search results."""

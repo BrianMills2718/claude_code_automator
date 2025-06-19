@@ -1,9 +1,8 @@
 import logging
-from typing import List, Optional, Type
-from datetime import datetime, timedelta
+from typing import List, Optional
+from datetime import datetime
 
-import pandas as pd
-import numpy as np
+import pandas as pd  # type: ignore
 from pydantic import ValidationError
 
 from ..data_sources.base import DataSourceBase, MarketData
@@ -32,6 +31,20 @@ class DataPipeline:
             return DataSourceResponse(
                 success=False,
                 error="No data sources configured"
+            )
+        
+        # Validate date range
+        if start_date and end_date and start_date > end_date:
+            return DataSourceResponse(
+                success=False,
+                error="Start date must be before end date"
+            )
+        
+        # Validate symbol
+        if not symbol or not symbol.strip():
+            return DataSourceResponse(
+                success=False,
+                error="Symbol cannot be empty"
             )
         
         all_data: List[MarketData] = []

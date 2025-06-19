@@ -1,6 +1,5 @@
-import pandas as pd
+import pandas as pd  # type: ignore
 import numpy as np
-from typing import Optional
 
 def clean_market_data(df: pd.DataFrame) -> pd.DataFrame:
     """Clean and normalize market data."""
