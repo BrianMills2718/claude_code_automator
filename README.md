@@ -1,6 +1,6 @@
-# 🤖 CC_AUTOMATOR4 - Autonomous Code Generation
+# 🤖 CC_AUTOMATOR4 - Intelligent Autonomous Code Generation
 
-**Intelligent multi-milestone project automation using Claude Code with advanced error recovery and validation.**
+**V4: Now with intelligent meta-agent orchestration that adapts strategies based on project context and learns from failures.**
 
 ## ✨ What It Does
 
@@ -8,13 +8,22 @@ CC_AUTOMATOR4 orchestrates multiple Claude Code instances through a sophisticate
 
 ### 🎯 Key Features
 
+#### Core Features (V3)
 - **Multi-Milestone Projects**: Automatically breaks complex projects into achievable milestones
 - **11-Phase Pipeline**: Research → Planning → Implementation → Architecture → Lint → Typecheck → Test → Integration → E2E → Validate → Commit
 - **Evidence-Based Validation**: Requires concrete proof of success (passing tests, clean code, working executables)
-- **Advanced Error Recovery**: CLI fallback system handles SDK TaskGroup bugs automatically  
+- **Advanced Error Recovery**: Intelligent step-back and retry mechanisms
 - **MCP Integration**: Uses Model Context Protocol for enhanced tool access
 - **Cost Tracking**: Per-phase token usage monitoring
 - **Resume Support**: Checkpoint system for long-running projects
+
+#### NEW V4 Intelligence Features
+- **🧠 Meta-Agent Orchestration**: Intelligent strategy selection based on project type and complexity
+- **📊 Failure Pattern Learning**: Learns from failures to avoid infinite loops and repeated errors
+- **🔄 Adaptive Strategies**: Switches between pipeline, iterative, and parallel exploration approaches
+- **🎯 Context-Aware Execution**: Different strategies for web apps, CLI tools, libraries, etc.
+- **⚡ Multi-Strategy Exploration**: Can explore multiple approaches in parallel for ambiguous requirements
+- **📈 Performance Optimization**: Learns which strategies work best for different project types
 
 ## 🚀 Quick Start
 
@@ -59,8 +68,21 @@ Brief description of what you're building
 ```
 
 3. **Run the automator:**
+
+**V3 Mode (Default - Proven stable pipeline):**
 ```bash
 python /path/to/cc_automator4/cli.py --project . --verbose
+```
+
+**V4 Mode (Intelligent meta-agent):**
+```bash
+python /path/to/cc_automator4/cli.py --project . --v4 --verbose
+
+# With decision explanations
+python /path/to/cc_automator4/cli.py --project . --v4 --explain
+
+# With parallel strategy exploration
+python /path/to/cc_automator4/cli.py --project . --v4 --v4-parallel
 ```
 
 ## 🏗️ How It Works
@@ -83,10 +105,10 @@ CC_AUTOMATOR4 prevents these issues by:
 4. **Error Recovery**: Automatic CLI fallback when SDK issues occur
 5. **No Cheating**: Validation catches false success claims
 
-### Nine-Phase Pipeline
+### Eleven-Phase Pipeline
 
 ```
-Research → Planning → Implementation → Lint → Typecheck → Test → Integration → E2E → Commit
+Research → Planning → Implementation → Architecture → Lint → Typecheck → Test → Integration → E2E → Validate → Commit
 ```
 
 Each phase has specific requirements and validation:
@@ -219,6 +241,77 @@ What you're building and why
 - Code must pass mypy strict type checking
 - All tests must pass with pytest
 - main.py must run successfully
+```
+
+## 🧠 V4 Intelligent Features
+
+### How V4 Intelligence Works
+
+V4 adds a meta-agent layer that makes intelligent decisions about how to approach your project:
+
+1. **Context Analysis**: Analyzes your project to understand:
+   - Project type (web app, CLI tool, library, ML project, etc.)
+   - Complexity level and technical requirements
+   - Requirement clarity and ambiguity
+   - Expected test coverage and quality standards
+
+2. **Strategy Selection**: Chooses the best approach:
+   - **V3 Pipeline**: For simple, well-defined projects
+   - **Iterative Refinement**: For complex projects with architecture challenges
+   - **Parallel Exploration**: For projects with ambiguous requirements
+
+3. **Failure Learning**: Learns from failures to:
+   - Detect infinite loop patterns
+   - Identify root causes of repeated failures
+   - Generate constraints to break out of loops
+   - Switch strategies when current approach isn't working
+
+4. **Evidence Validation**: All V4 decisions are validated:
+   - Meta-agent must provide evidence for strategy choices
+   - Learning data must be concrete, not claimed
+   - All strategies must produce V3-standard evidence
+
+### V4 Strategy Examples
+
+**Simple CLI Tool** → V3 Pipeline Strategy
+```
+Context: Low complexity, clear requirements
+Strategy: Standard sequential pipeline
+Result: Fast, efficient execution
+```
+
+**Complex Web App with Architecture Issues** → Iterative Refinement
+```
+Context: High complexity, previous architecture failures
+Strategy: Focus on research/planning/architecture phases
+Result: Better architecture, fewer downstream issues
+```
+
+**ML Project with Ambiguous Requirements** → Parallel Exploration
+```
+Context: Unclear specifications, multiple valid approaches
+Strategy: Explore 3 approaches in parallel
+Result: Best approach selected based on evidence
+```
+
+### V4 Command Line Options
+
+```bash
+# Basic V4 execution
+python cli.py --project . --v4
+
+# V4 with explanations of decisions
+python cli.py --project . --v4 --explain
+
+# V4 with parallel strategy exploration
+python cli.py --project . --v4 --v4-parallel
+
+# V4 without learning (useful for testing)
+python cli.py --project . --v4 --no-v4-learning
+
+# Set V4 as default mode
+export V4_MODE=true
+python cli.py --project .
 ```
 
 ## 🔍 Monitoring & Debugging
