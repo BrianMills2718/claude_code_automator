@@ -2079,24 +2079,70 @@ Be thorough, complete, and anticipate what downstream phases will need from your
             return result.returncode == 0 and "Success: no issues found" in result.stdout
             
         elif phase.name == "test":
-            # Run pytest on unit tests with proper Python path
+            # Run pytest on unit tests with STRICT validation - ALL tests must pass
             result = subprocess.run(
-                ["python", "-m", "pytest", "tests/unit", "-xvs"],
+                ["python", "-m", "pytest", "tests/unit", "-v", "--tb=short"],
                 capture_output=True,
                 text=True,
                 cwd=str(self.working_dir)
             )
-            return result.returncode == 0
+            
+            # ANTI-CHEATING: Require 100% test success, not just exit code 0
+            if result.returncode != 0:
+                return False
+                
+            # Parse pytest output for exact test counts
+            import re
+            output = result.stdout + result.stderr
+            
+            # Look for pytest summary line like "5 passed in 0.23s" or "3 passed, 1 failed"
+            passed_match = re.search(r'(\d+) passed', output)
+            failed_match = re.search(r'(\d+) failed', output)
+            error_match = re.search(r'(\d+) error', output)
+            
+            if not passed_match:
+                # No tests found or pytest output malformed
+                return False
+                
+            passed_count = int(passed_match.group(1))
+            failed_count = int(failed_match.group(1)) if failed_match else 0
+            error_count = int(error_match.group(1)) if error_match else 0
+            
+            # STRICT REQUIREMENT: Zero failures, zero errors, at least one test
+            return passed_count > 0 and failed_count == 0 and error_count == 0
             
         elif phase.name == "integration":
-            # Run pytest on integration tests with proper Python path
+            # Run pytest on integration tests with STRICT validation - ALL tests must pass
             result = subprocess.run(
-                ["python", "-m", "pytest", "tests/integration", "-xvs"],
+                ["python", "-m", "pytest", "tests/integration", "-v", "--tb=short"],
                 capture_output=True,
                 text=True,
                 cwd=str(self.working_dir)
             )
-            return result.returncode == 0
+            
+            # ANTI-CHEATING: Require 100% test success, not just exit code 0
+            if result.returncode != 0:
+                return False
+                
+            # Parse pytest output for exact test counts
+            import re
+            output = result.stdout + result.stderr
+            
+            # Look for pytest summary line like "5 passed in 0.23s" or "3 passed, 1 failed"
+            passed_match = re.search(r'(\d+) passed', output)
+            failed_match = re.search(r'(\d+) failed', output)
+            error_match = re.search(r'(\d+) error', output)
+            
+            if not passed_match:
+                # No tests found or pytest output malformed
+                return False
+                
+            passed_count = int(passed_match.group(1))
+            failed_count = int(failed_match.group(1)) if failed_match else 0
+            error_count = int(error_match.group(1)) if error_match else 0
+            
+            # STRICT REQUIREMENT: Zero failures, zero errors, at least one test
+            return passed_count > 0 and failed_count == 0 and error_count == 0
             
         elif phase.name == "research":
             # Check if research.md or similar was created with content
