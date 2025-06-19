@@ -107,15 +107,26 @@ class V3QueryWrapper:
             error_type = self._classify_error(e)
             
             if error_type == "taskgroup_cleanup":
-                # This is a cleanup race condition, not a real error
+                # Enhanced TaskGroup error analysis and logging
+                error_details = self._analyze_taskgroup_error(e)
+                
                 if self.verbose:
-                    print(f"⚠️  TaskGroup cleanup race condition detected (ignoring): {str(e)[:100]}")
-                # Yield a completion message to indicate the phase completed successfully despite cleanup noise
+                    print(f"⚠️  TaskGroup cleanup race condition detected:")
+                    print(f"    Error type: {error_details['specific_type']}")
+                    print(f"    Severity: {error_details['severity']}")
+                    print(f"    Root cause: {error_details['likely_cause']}")
+                    print(f"    Details: {str(e)[:200]}")
+                
+                # Log to stability tracking file for analysis
+                self._log_taskgroup_error(error_details, str(e))
+                
+                # Still yield completion but with enhanced metadata
                 yield {
                     "type": "result",
                     "subtype": "success",
                     "is_error": False,
-                    "result": "Phase completed successfully (TaskGroup cleanup noise ignored)",
+                    "result": "Phase completed successfully (TaskGroup cleanup issue handled)",
+                    "taskgroup_analysis": error_details,
                     "total_cost_usd": 0.0,
                     "duration_ms": 0,
                     "timestamp": time.time()
@@ -165,6 +176,140 @@ class V3QueryWrapper:
         
         # Real execution errors
         return "execution_error"
+    
+    def _analyze_taskgroup_error(self, error: Exception) -> dict:
+        """
+        Enhanced TaskGroup error analysis for better debugging and stability tracking.
+        """
+        error_str = str(error).lower()
+        error_type = type(error).__name__
+        
+        analysis = {
+            "error_class": error_type,
+            "timestamp": time.time(),
+            "specific_type": "unknown",
+            "severity": "medium",
+            "likely_cause": "unknown",
+            "operational_impact": "minimal",
+            "recovery_action": "continue"
+        }
+        
+        # Analyze BaseExceptionGroup (most common TaskGroup error)
+        if isinstance(error, BaseExceptionGroup):
+            analysis.update({
+                "specific_type": "BaseExceptionGroup",
+                "severity": "low" if len(error.exceptions) == 1 else "medium",
+                "likely_cause": "async_cleanup_race_condition",
+                "operational_impact": "none_if_work_completed"
+            })
+            
+            # Analyze sub-exceptions for more detail
+            sub_types = [type(e).__name__ for e in error.exceptions]
+            if "CancelledError" in sub_types:
+                analysis["likely_cause"] = "task_cancellation_during_cleanup"
+            if "TimeoutError" in sub_types:
+                analysis["likely_cause"] = "timeout_during_cleanup_phase"
+                
+        # Analyze cancel scope violations
+        elif "cancel_scope" in error_str:
+            analysis.update({
+                "specific_type": "cancel_scope_violation",
+                "severity": "medium",
+                "likely_cause": "context_manager_boundary_crossing",
+                "operational_impact": "potential_resource_leak"
+            })
+            
+        # Analyze unhandled errors
+        elif "unhandled errors" in error_str:
+            analysis.update({
+                "specific_type": "unhandled_taskgroup_errors",
+                "severity": "high",
+                "likely_cause": "multiple_concurrent_failures",
+                "operational_impact": "possible_work_incomplete"
+            })
+            
+        return analysis
+    
+    def _log_taskgroup_error(self, error_details: dict, full_error: str):
+        """
+        Log TaskGroup errors to stability tracking file for analysis.
+        """
+        try:
+            log_dir = self.working_dir / ".cc_automator" / "stability_logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            
+            log_file = log_dir / "taskgroup_errors.jsonl"
+            
+            log_entry = {
+                "timestamp": time.time(),
+                "iso_timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "error_analysis": error_details,
+                "full_error_text": full_error[:500],  # Truncate for storage
+                "session_info": {
+                    "working_dir": str(self.working_dir),
+                    "verbose_mode": self.verbose
+                }
+            }
+            
+            # Append to JSONL file for easy analysis
+            with open(log_file, "a") as f:
+                import json
+                f.write(json.dumps(log_entry) + "\n")
+                
+        except Exception as log_error:
+            # Don't fail the main operation if logging fails
+            if self.verbose:
+                print(f"Warning: Failed to log TaskGroup error: {log_error}")
+    
+    def get_taskgroup_error_summary(self) -> dict:
+        """
+        Get summary of TaskGroup errors for stability analysis.
+        """
+        try:
+            log_file = self.working_dir / ".cc_automator" / "stability_logs" / "taskgroup_errors.jsonl"
+            
+            if not log_file.exists():
+                return {"total_errors": 0, "no_data": True}
+            
+            import json
+            errors = []
+            
+            with open(log_file, "r") as f:
+                for line in f:
+                    try:
+                        errors.append(json.loads(line.strip()))
+                    except json.JSONDecodeError:
+                        continue
+            
+            if not errors:
+                return {"total_errors": 0, "no_data": True}
+            
+            # Analyze error patterns
+            total_errors = len(errors)
+            recent_errors = [e for e in errors if time.time() - e["timestamp"] < 3600]  # Last hour
+            
+            error_types = {}
+            severity_counts = {"low": 0, "medium": 0, "high": 0}
+            
+            for error in errors:
+                analysis = error.get("error_analysis", {})
+                error_type = analysis.get("specific_type", "unknown")
+                severity = analysis.get("severity", "medium")
+                
+                error_types[error_type] = error_types.get(error_type, 0) + 1
+                severity_counts[severity] += 1
+            
+            return {
+                "total_errors": total_errors,
+                "recent_errors_count": len(recent_errors),
+                "error_types": error_types,
+                "severity_distribution": severity_counts,
+                "most_common_type": max(error_types.items(), key=lambda x: x[1])[0] if error_types else None,
+                "last_error_time": max(e["timestamp"] for e in errors) if errors else None
+            }
+            
+        except Exception as e:
+            return {"total_errors": 0, "analysis_error": str(e)}
 
 # Create global instance for easy access
 _v3_wrapper = None

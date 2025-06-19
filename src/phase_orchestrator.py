@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 import asyncio
 import anyio
+import psutil  # For resource monitoring
 # Use V3 SDK wrapper with TaskGroup fixes and pure SDK implementation
 try:
     from .claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
@@ -129,9 +130,14 @@ class PhaseOrchestrator:
         self.current_milestone = None  # Will be set by runner
         self.step_back_count = 0  # Track step-backs to prevent infinite loops (unless infinite_mode)
         
+        # Resource usage tracking for stability monitoring
+        self.resource_metrics = []
+        self.stability_logs_dir = self.working_dir / ".cc_automator" / "stability_logs"
+        
         # Create directories
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
+        self.stability_logs_dir.mkdir(parents=True, exist_ok=True)
         
     def add_phase(self, phase: Phase):
         """Add a phase to the execution plan"""
@@ -142,6 +148,9 @@ class PhaseOrchestrator:
         
     def execute_phase(self, phase: Phase) -> Dict[str, Any]:
         """Execute a single phase using Claude Code SDK or CLI"""
+        
+        # Record resource metrics at phase start
+        start_metrics = self.record_resource_metrics(phase.name, "start")
         
         # Print phase header (minimal by default)
         if hasattr(self, 'verbose') and self.verbose:
@@ -781,6 +790,17 @@ Write to it: PHASE_COMPLETE"""
         finally:
             phase.end_time = datetime.now()
             
+            # Record resource metrics at phase end
+            end_metrics = self.record_resource_metrics(phase.name, "end")
+            
+            # Calculate resource usage for this phase
+            if start_metrics and end_metrics and "process_memory_mb" in start_metrics and "process_memory_mb" in end_metrics:
+                memory_delta = end_metrics["process_memory_mb"] - start_metrics["process_memory_mb"]
+                if abs(memory_delta) > 10:  # 10MB threshold
+                    direction = "↗️" if memory_delta > 0 else "↘️"
+                    if self.verbose:
+                        print(f"  {direction} Memory change: {memory_delta:+.1f} MB")
+            
             # Save session with full message history for context preservation
             if hasattr(self, 'session_manager') and phase.session_id:
                 self.session_manager[phase.name] = {
@@ -809,6 +829,115 @@ Write to it: PHASE_COMPLETE"""
                         print(f"  Specific issue: {validation_result['feedback']}")
             
         return self._phase_to_dict(phase)
+    
+    def record_resource_metrics(self, phase_name: str, event: str = "start") -> Dict[str, Any]:
+        """Record resource usage metrics for stability monitoring."""
+        try:
+            process = psutil.Process()
+            memory_mb = process.memory_info().rss / 1024 / 1024
+            cpu_percent = process.cpu_percent()
+            
+            # Get system-wide stats
+            system_memory = psutil.virtual_memory()
+            
+            # Count open file descriptors (Unix only)
+            try:
+                open_fds = process.num_fds() if hasattr(process, 'num_fds') else 0
+            except (psutil.AccessDenied, AttributeError):
+                open_fds = 0
+            
+            # Count network connections
+            try:
+                connections = process.connections()
+                network_connections = len([c for c in connections if c.status == 'ESTABLISHED'])
+            except (psutil.AccessDenied, psutil.NoSuchProcess):
+                network_connections = 0
+            
+            metrics = {
+                "timestamp": time.time(),
+                "iso_timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+                "phase_name": phase_name,
+                "event": event,
+                "process_memory_mb": memory_mb,
+                "process_cpu_percent": cpu_percent,
+                "open_file_descriptors": open_fds,
+                "network_connections": network_connections,
+                "system_memory_percent": system_memory.percent,
+                "system_available_memory_gb": system_memory.available / 1024 / 1024 / 1024
+            }
+            
+            self.resource_metrics.append(metrics)
+            
+            # Keep only last 1000 metrics to prevent memory growth
+            if len(self.resource_metrics) > 1000:
+                self.resource_metrics = self.resource_metrics[-500:]
+            
+            # Log to file for persistent tracking
+            self._log_resource_metrics(metrics)
+            
+            return metrics
+            
+        except Exception as e:
+            if self.verbose:
+                print(f"Warning: Failed to record resource metrics: {e}")
+            return {"timestamp": time.time(), "error": str(e)}
+    
+    def _log_resource_metrics(self, metrics: Dict[str, Any]):
+        """Log resource metrics to file for analysis."""
+        try:
+            log_file = self.stability_logs_dir / "resource_metrics.jsonl"
+            
+            with open(log_file, "a") as f:
+                json.dump(metrics, f)
+                f.write("\n")
+                
+        except Exception as e:
+            # Don't fail main operation if logging fails
+            if self.verbose:
+                print(f"Warning: Failed to log resource metrics: {e}")
+    
+    def get_resource_stability_summary(self) -> Dict[str, Any]:
+        """Get summary of resource usage for stability assessment."""
+        if len(self.resource_metrics) < 2:
+            return {"insufficient_data": True, "metric_count": len(self.resource_metrics)}
+        
+        recent_metrics = self.resource_metrics[-20:]  # Last 20 samples
+        initial_memory = self.resource_metrics[0]["process_memory_mb"]
+        current_memory = recent_metrics[-1]["process_memory_mb"]
+        
+        memory_growth = current_memory - initial_memory
+        memory_values = [m["process_memory_mb"] for m in recent_metrics]
+        
+        fd_values = [m["open_file_descriptors"] for m in recent_metrics if m["open_file_descriptors"] > 0]
+        connection_values = [m["network_connections"] for m in recent_metrics]
+        
+        return {
+            "total_samples": len(self.resource_metrics),
+            "memory_growth_mb": memory_growth,
+            "current_memory_mb": current_memory,
+            "memory_trend_recent": memory_values[-1] - memory_values[0] if len(memory_values) > 1 else 0,
+            "max_memory_mb": max(memory_values),
+            "avg_memory_mb": sum(memory_values) / len(memory_values),
+            "max_file_descriptors": max(fd_values) if fd_values else 0,
+            "max_network_connections": max(connection_values),
+            "avg_network_connections": sum(connection_values) / len(connection_values),
+            "memory_leak_suspected": memory_growth > 100,  # 100MB growth threshold
+            "fd_leak_suspected": max(fd_values) > 100 if fd_values else False,
+            "connection_leak_suspected": max(connection_values) > 20,
+            "first_sample_time": self.resource_metrics[0]["timestamp"],
+            "last_sample_time": recent_metrics[-1]["timestamp"]
+        }
+    
+    def get_taskgroup_error_analysis(self) -> Dict[str, Any]:
+        """Get TaskGroup error analysis from V3 SDK wrapper."""
+        try:
+            if V3_SDK_AVAILABLE:
+                wrapper = get_v3_wrapper(self.working_dir, self.verbose)
+                return wrapper.get_taskgroup_error_summary()
+            else:
+                return {"v3_sdk_not_available": True}
+        except Exception as e:
+            return {"analysis_error": str(e)}
     
     async def _attempt_phase_recovery(self, phase: Phase, error_details: str) -> bool:
         """Attempt to recover from TaskGroup error by letting Claude complete the phase."""
@@ -2331,30 +2460,115 @@ Be thorough, complete, and anticipate what downstream phases will need from your
             return True
             
         elif phase.name == "validate":
-            # Check if validation report was created and no mocks found
+            # Enhanced validation with multiple checks and better error reporting
             milestone_num = getattr(self, 'current_milestone', 1)
-            validation_report = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}" / "validation_report.md"
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
             
-            if not validation_report.exists():
-                if self.verbose:
-                    print(f"Validation failed: {validation_report} not found")
-                return False
-                
-            # Also run our own check for mocks
-            result = subprocess.run(
-                ["grep", "-r", "-E", "mock|Mock|TODO|FIXME|NotImplemented", 
-                 "--include=*.py", "--exclude-dir=tests", "--exclude-dir=venv", "."],
-                capture_output=True,
-                text=True,
-                cwd=str(self.working_dir)
-            )
+            # Check for validation report with multiple possible names
+            validation_files = list(milestone_dir.glob("*validation*.md"))
+            validation_report = None
             
-            if result.returncode == 0:  # grep found matches
+            if validation_files:
+                validation_report = validation_files[0]
+                if self.verbose and len(validation_files) > 1:
+                    print(f"Note: Found multiple validation files: {[f.name for f in validation_files]}")
+                    print(f"Using: {validation_report.name}")
+            
+            if not validation_report or not validation_report.exists():
                 if self.verbose:
-                    print(f"Validation failed: Found mocks/stubs in production code")
-                    print(result.stdout[:500])
+                    expected_path = milestone_dir / "validation_report.md"
+                    print(f"Validation failed: No validation report found")
+                    print(f"Expected: {expected_path}")
+                    print(f"Milestone dir exists: {milestone_dir.exists()}")
+                    if milestone_dir.exists():
+                        existing_files = list(milestone_dir.glob("*.md"))
+                        print(f"Existing .md files: {[f.name for f in existing_files]}")
                 return False
+            
+            # Validate the content of the validation report
+            try:
+                validation_content = validation_report.read_text()
+                if len(validation_content.strip()) < 50:
+                    if self.verbose:
+                        print(f"Validation failed: Validation report too short ({len(validation_content)} chars)")
+                    return False
                 
+                # Check for required validation elements
+                required_elements = ["implementation", "tested", "working"]
+                missing_elements = [elem for elem in required_elements if elem.lower() not in validation_content.lower()]
+                
+                if missing_elements:
+                    if self.verbose:
+                        print(f"Validation report missing key elements: {missing_elements}")
+                        print(f"Report preview: {validation_content[:200]}...")
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"Failed to read validation report: {e}")
+                return False
+            
+            # Check for mocks/stubs in production code (enhanced patterns)
+            mock_patterns = [
+                "mock|Mock",
+                "TODO|FIXME", 
+                "NotImplemented|NotImplementedError",
+                "stub|Stub",
+                "placeholder|PLACEHOLDER",
+                "dummy|Dummy"
+            ]
+            
+            found_issues = []
+            
+            for pattern in mock_patterns:
+                result = subprocess.run(
+                    ["grep", "-r", "-E", pattern, 
+                     "--include=*.py", "--exclude-dir=tests", "--exclude-dir=venv", 
+                     "--exclude-dir=.cc_automator", "."],
+                    capture_output=True,
+                    text=True,
+                    cwd=str(self.working_dir)
+                )
+                
+                if result.returncode == 0:  # grep found matches
+                    lines = result.stdout.strip().split('\n')
+                    # Filter out comments and acceptable uses
+                    real_issues = []
+                    for line in lines:
+                        if not any(comment in line for comment in ['#', '"""', "'''"]):
+                            real_issues.append(line)
+                    
+                    if real_issues:
+                        found_issues.extend(real_issues[:3])  # Limit to first 3 per pattern
+            
+            if found_issues:
+                if self.verbose:
+                    print(f"Validation failed: Found {len(found_issues)} mock/stub issues in production code:")
+                    for issue in found_issues[:5]:  # Show first 5 issues
+                        print(f"  {issue}")
+                return False
+            
+            # Additional validation: Check that main.py actually runs
+            main_py = self.working_dir / "main.py"
+            if main_py.exists():
+                try:
+                    # Quick syntax check
+                    syntax_check = subprocess.run(
+                        [sys.executable, "-m", "py_compile", str(main_py)],
+                        capture_output=True,
+                        text=True,
+                        cwd=str(self.working_dir)
+                    )
+                    
+                    if syntax_check.returncode != 0:
+                        if self.verbose:
+                            print(f"Validation failed: main.py has syntax errors")
+                            print(syntax_check.stderr[:300])
+                        return False
+                        
+                except Exception as e:
+                    if self.verbose:
+                        print(f"Warning: Could not validate main.py syntax: {e}")
+            
             return True
             
         elif phase.name == "commit":
