@@ -5,52 +5,60 @@
 ## WORKING NOTES (REMOVE WHEN COMPLETE)
 <!-- Archive to: docs/implementation_strategies.md when done -->
 
-### CURRENT PRIORITY: Runtime Issues After Infinite Mode ✅ FIXED
-**GOAL**: Resolve assessment monitor failures, resume functionality, and debug output issues
-**PREVIOUS**: ✅ Infinite mode fixed - `Max Turns: 999999` confirmed working
-**STATUS**: ✅ FIXED - All major runtime issues resolved
+### CURRENT PRIORITY: V3 Stability Issues and V4 Planning ⚠️ CRITICAL FINDINGS
+**GOAL**: Address V3 stability issues before V4 development and implement conservative enhancement strategy
+**PREVIOUS**: ✅ V3 basic functionality working but stability issues discovered
+**STATUS**: 🚨 V3 STABILITY ASSESSMENT REQUIRED - V4 PLANNING COMPLETE
 
-**FIXES COMPLETED**:
-1. ✅ **Assessment Monitor Timeouts** (`src/orchestrator.py:606-613`):
-   - DISABLED assessment monitoring for complex phases
-   - Eliminated 30-second timeout delays
-   - Removed non-functional monitoring overhead
-   - Result: Clean execution without assessment interruptions
+**V3 STABILITY ISSUES DISCOVERED** (ML Portfolio Test Analysis):
+1. 🚨 **TaskGroup Cleanup Race Conditions** (`docs/analysis/taskgroup_cleanup_detailed_analysis.md`):
+   - Async resource cleanup failures during WebSearch operations
+   - SDK error masking strategy hides symptoms rather than fixing root causes
+   - Resource leak risks from incomplete HTTP connection cleanup
+   - Pattern: `⚠️ TaskGroup cleanup race condition detected (ignoring)`
 
-2. ✅ **Resume Functionality** (`src/orchestrator.py:170-191`):
-   - Fixed milestone loading in resume mode
-   - Skip milestone validation when resuming to avoid strict checks
-   - Load milestone definitions from CLAUDE.md but progress from tracker
-   - Result: `python cli.py --resume` now works correctly
+2. 🚨 **SDK Error Masking vs Fixing** (`src/claude_code_sdk_fixed_v3.py:109-123`):
+   - V3 wrapper suppresses TaskGroup errors and fabricates success messages
+   - Real async resource management issues remain unresolved
+   - Long-term stability uncertain due to accumulated resource leaks
+   - Debugging impossibility when real failures occur
 
-3. ✅ **Excessive Debug Output** (`src/file_parallel_executor.py:214-217, 248-249`):
-   - Removed `DEBUG: About to call orchestrator.execute_phase` spam
-   - Simplified error reporting, removed verbose join error details
-   - Result: Clean, readable progress output
+3. ✅ **Evidence-Based Validation System Working**:
+   - Anti-cheating system correctly catches false completion claims
+   - Independent validation prevents phases from lying about success
+   - File existence and content verification functioning as designed
 
-4. ℹ️  **Assessment Monitor Logic**: 
-   - Resolved by disabling assessment monitoring entirely
-   - Feature was causing more problems than value
+**V4 PLANNING RESEARCH COMPLETE** (`docs/planning/`):
+- ✅ Comprehensive risk analysis of original V4 roadmap
+- ✅ Conservative implementation strategy developed
+- ✅ Evidence-based validation principles preserved
+- ✅ Stability prerequisites identified for V4 development
 
-5. ℹ️  **File Naming Consistency**:
-   - Investigated: System already handles both `research.md` and `research_CLAUDE.md`
-   - Validation accepts files with phase name in filename
-   - This is intentional flexibility, not a bug
+**MANDATORY V3 STABILITY GATES** (Before any V4 work):
+1. 🔴 **Fix TaskGroup Issues**: Replace error masking with proper async cleanup
+2. 🔴 **Consecutive Success Test**: 10 ML Portfolio runs without SDK errors
+3. 🔴 **Resource Stability**: Prove no memory leaks or connection accumulation
+4. 🔴 **Stress Testing**: 8+ hour operation without async cleanup failures
 
-**SYSTEM STATE** (✅ READY FOR PRODUCTION):
-- ✅ Infinite mode: `Max Turns: 999999` working
-- ✅ Resume functionality: Can resume interrupted sessions  
-- ✅ Assessment timeouts: Eliminated
-- ✅ Debug output: Cleaned up
-- ✅ Parallel execution: Multiple phases working simultaneously
-- ✅ V3 SDK: Pure SDK execution, no CLI fallbacks
+**V4 DEVELOPMENT STRATEGY** (`docs/planning/v4_conservative_implementation_strategy.md`):
+- 🟢 **Phase 1**: Low-risk improvements (E2E validation, debugging tools)
+- 🟡 **Phase 2**: Medium-risk enhancements (optional telemetry, limited config)
+- 🔴 **Never Implement**: Meta-agents, complex parallel execution, extensive configuration
 
-**NEXT TESTING**:
-- Run full ML Portfolio Analyzer test to completion
-- Verify resume functionality works in practice
-- Monitor for any remaining edge cases
+**CURRENT STATUS** (⚠️ STABILITY WORK REQUIRED):
+- ✅ V3 can complete complex projects (ML Portfolio test progressing)
+- 🚨 TaskGroup async cleanup failures create long-term stability risks
+- 🚨 Error masking prevents proper root cause diagnosis
+- 🔴 V3 hardening mandatory before V4 development begins
 
-<!-- Remove this section after successful full test run -->
+**IMMEDIATE NEXT STEPS**:
+1. Monitor ML Portfolio test completion (currently Milestone 3/4)
+2. Analyze final test results for additional stability evidence
+3. Begin V3 TaskGroup issue resolution (replace masking with fixing)
+4. Implement V3 stability validation gates
+5. Only proceed with V4 after V3 stability proven
+
+<!-- Archive to: docs/v3_stability_work.md when V3 hardening complete -->
 
 ## File Organization & Navigation
 
