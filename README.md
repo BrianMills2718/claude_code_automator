@@ -4,12 +4,12 @@
 
 ## ✨ What It Does
 
-CC_AUTOMATOR4 orchestrates multiple Claude Code instances through a sophisticated 9-phase pipeline to build complete, production-ready software projects autonomously. Unlike simple AI coding tools, it enforces evidence-based validation and prevents Claude from taking shortcuts or mocking implementations.
+CC_AUTOMATOR4 orchestrates multiple Claude Code instances through a sophisticated 11-phase pipeline to build complete, production-ready software projects autonomously. Unlike simple AI coding tools, it enforces evidence-based validation and prevents Claude from taking shortcuts or mocking implementations.
 
 ### 🎯 Key Features
 
 - **Multi-Milestone Projects**: Automatically breaks complex projects into achievable milestones
-- **9-Phase Pipeline**: Research → Planning → Implementation → Lint → Typecheck → Test → Integration → E2E → Commit
+- **11-Phase Pipeline**: Research → Planning → Implementation → Architecture → Lint → Typecheck → Test → Integration → E2E → Validate → Commit
 - **Evidence-Based Validation**: Requires concrete proof of success (passing tests, clean code, working executables)
 - **Advanced Error Recovery**: CLI fallback system handles SDK TaskGroup bugs automatically  
 - **MCP Integration**: Uses Model Context Protocol for enhanced tool access

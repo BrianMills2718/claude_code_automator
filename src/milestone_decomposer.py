@@ -130,6 +130,7 @@ class MilestoneDecomposer:
             ("research", f"Research requirements for: {milestone.name}"),
             ("planning", f"Create implementation plan for: {milestone.name}"),
             ("implement", f"Implement: {milestone.name}"),
+            ("architecture", "Review implementation architecture before mechanical phases"),
             ("lint", "Fix all flake8 issues"),
             ("typecheck", "Fix all mypy type errors"),
             ("test", "Fix all failing unit tests"),

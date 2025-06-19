@@ -16,13 +16,26 @@ from dataclasses import dataclass, field
 from enum import Enum
 import asyncio
 import anyio
-# Use fixed SDK wrapper if available, fallback to original
+# Use V3 SDK wrapper with TaskGroup fixes and pure SDK implementation
 try:
-    from .claude_code_sdk_fixed import query, ClaudeCodeOptions, Message
-    print("✅ Using fixed SDK wrapper (cost parsing bug patched)")
+    from .claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
+    print("✅ Using V3 SDK wrapper (TaskGroup issues resolved, pure SDK)")
+    V3_SDK_AVAILABLE = True
 except ImportError:
-    from claude_code_sdk import query, ClaudeCodeOptions, Message
-    print("⚠️  Using original SDK (may encounter cost_usd errors)")
+    try:
+        # Try absolute import for V3
+        from claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
+        print("✅ Using V3 SDK wrapper via absolute import (TaskGroup issues resolved, pure SDK)")
+        V3_SDK_AVAILABLE = True
+    except ImportError:
+        try:
+            from .claude_code_sdk_fixed_v2 import query, ClaudeCodeOptions, Message
+            print("⚠️  Fallback to V2 SDK wrapper (TaskGroup issues remain)")
+            V3_SDK_AVAILABLE = False
+        except ImportError:
+            from claude_code_sdk import query, ClaudeCodeOptions, Message
+            print("⚠️  Using original SDK (may encounter errors)")
+            V3_SDK_AVAILABLE = False
 
 
 class PhaseStatus(Enum):
@@ -152,131 +165,37 @@ class PhaseOrchestrator:
         phase.status = PhaseStatus.RUNNING
         phase.start_time = datetime.now()
         
-        # Check if we should use SDK (default is True)
-        use_sdk = os.environ.get('USE_CLAUDE_SDK', 'true').lower() == 'true'
-        
-        if use_sdk:
-            # Track SDK failure count for this phase
-            failure_count = getattr(phase, '_sdk_failure_count', 0)
-            
-            # Use SDK for all phases, with fallback to CLI after 2 failures
-            try:
-                return anyio.run(self._execute_with_sdk, phase)
-            except Exception as e:
-                error_str = str(e)
-                failure_count += 1
-                phase._sdk_failure_count = failure_count
-                
-                if "TaskGroup" in error_str and "unhandled errors" in error_str:
-                    # This is an async cleanup issue, check if work was done
-                    if phase.status == PhaseStatus.COMPLETED:
-                        return self._phase_to_dict(phase)
-                    elif phase.status == PhaseStatus.RUNNING:
-                        # Phase was still running, but we might have done work
-                        print(f"⚠️  TaskGroup error during {phase.name}, checking for partial completion...")
-                        # Check if any output files were created
-                        if self._check_phase_outputs_exist(phase):
-                            print(f"  Found output files, marking as completed for validation")
-                            phase.status = PhaseStatus.COMPLETED
-                            return self._phase_to_dict(phase)
-                    
-                    # TaskGroup errors are known SDK bugs - fallback immediately on first occurrence
-                    print(f"💥 TaskGroup error detected in {phase.name}, switching to CLI fallback immediately...")
-                    # Reset phase status for CLI retry
-                    phase.status = PhaseStatus.PENDING
-                    phase.error = None
-                    return self._execute_cli_fallback(phase)
-                
-                # If the phase already completed, don't fail on cleanup errors
-                if phase.status == PhaseStatus.COMPLETED:
-                    return self._phase_to_dict(phase)
-                raise
-        else:
-            # Fall back to CLI for compatibility
-            if phase.name in ['lint', 'typecheck'] and phase.timeout_seconds <= 300:
-                return self._execute_direct(phase)
-            else:
-                # Use async execution for complex phases
-                return self._execute_async(phase)
-    
-    def _execute_cli_fallback(self, phase: Phase) -> Dict[str, Any]:
-        """CLI fallback when SDK TaskGroup errors occur repeatedly."""
-        print(f"🔄 Using CLI fallback for {phase.name} phase...")
-        
-        # Build simplified prompt without complex formatting
-        fallback_prompt = f"""PHASE: {phase.name.upper()}
-
-Task: {phase.description}
-
-Working directory: {self.working_dir.name}
-
-Instructions:
-- Complete the {phase.name} phase requirements
-- Create any required output files  
-- Use your standard tools effectively
-- Don't overthink it - just get the job done
-
-IMPORTANT: Focus on completing the task successfully."""
-        
-        # Use direct CLI execution with simpler options
-        cmd = [
-            "claude", "-p", fallback_prompt,
-            "--output-format", "json",
-            "--max-turns", str(min(phase.max_turns, 20)),  # Limit turns to reduce complexity
-            "--dangerously-skip-permissions"
-        ]
-        
-        # Only include basic tools to reduce complexity
-        basic_tools = ["Read", "Write", "Edit", "Bash"]
-        if phase.allowed_tools:
-            # Use intersection of allowed tools and basic tools
-            safe_tools = [t for t in phase.allowed_tools if t in basic_tools]
-            if safe_tools:
-                cmd.extend(["--allowedTools", ",".join(safe_tools)])
-        
+        # V3 Pure SDK execution
         try:
-            print(f"  Running CLI command with {len(cmd)} args...")
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=min(phase.timeout_seconds, 300),  # Max 5 minutes for fallback
-                cwd=str(self.working_dir)
-            )
-            
-            if result.returncode == 0:
-                print(f"✅ CLI fallback succeeded for {phase.name}")
-                phase.status = PhaseStatus.COMPLETED
-                # Try to parse JSON output for metadata
-                try:
-                    result_data = json.loads(result.stdout)
-                    phase.session_id = result_data.get("session_id", f"cli-fallback-{phase.name}")
-                    phase.cost_usd = result_data.get("cost_usd", 0.0)
-                    phase.duration_ms = result_data.get("duration_ms", 0)
-                except json.JSONDecodeError:
-                    phase.session_id = f"cli-fallback-{phase.name}"
-                    phase.cost_usd = 0.0
-                    phase.duration_ms = 0
+            if V3_SDK_AVAILABLE:
+                print(f"🚀 V3 Pure SDK execution for {phase.name}")
+                return anyio.run(self._execute_with_sdk, phase)
             else:
-                print(f"❌ CLI fallback failed for {phase.name}: {result.stderr}")
-                phase.status = PhaseStatus.FAILED
-                phase.error = f"CLI fallback failed: {result.stderr}"
-                
-        except subprocess.TimeoutExpired:
-            print(f"⏰ CLI fallback timed out for {phase.name}")
-            phase.status = PhaseStatus.TIMEOUT
-            phase.error = f"CLI fallback timed out after {min(phase.timeout_seconds, 300)} seconds"
+                print(f"⚠️  V3 SDK not available, using legacy SDK for {phase.name}")
+                return anyio.run(self._execute_with_sdk, phase)
         except Exception as e:
-            print(f"💥 CLI fallback error for {phase.name}: {e}")
-            phase.status = PhaseStatus.FAILED
-            phase.error = f"CLI fallback error: {str(e)}"
-            
-        finally:
-            phase.end_time = datetime.now()
-            self._save_checkpoint(phase)
-            self._save_milestone_evidence(phase)
-            self._print_phase_summary(phase)
-            
+            # V3 should handle TaskGroup issues internally, any exceptions here are real errors
+            if V3_SDK_AVAILABLE:
+                print(f"❌ V3 SDK execution failed for {phase.name}: {str(e)}")
+                # Check if work was actually completed despite the error
+                if phase.status == PhaseStatus.COMPLETED:
+                    print(f"✅ Work completed despite error, continuing...")
+                    return self._phase_to_dict(phase)
+                else:
+                    # Real failure in V3
+                    phase.status = PhaseStatus.FAILED
+                    phase.error = f"V3 SDK execution failed: {str(e)}"
+                    return self._phase_to_dict(phase)
+            else:
+                # Legacy SDK handling - limited fallback logic
+                error_str = str(e)
+                if "TaskGroup" in error_str and phase.status == PhaseStatus.COMPLETED:
+                    print(f"⚠️  Legacy SDK cleanup error (work completed): {str(e)[:100]}")
+                    return self._phase_to_dict(phase)
+                else:
+                    print(f"❌ Legacy SDK execution failed for {phase.name}: {str(e)}")
+                    raise
+        
         return self._phase_to_dict(phase)
     
     def _execute_direct(self, phase: Phase) -> Dict[str, Any]:
@@ -555,15 +474,15 @@ Write to it: PHASE_COMPLETE"""
         # Check for force Sonnet mode (uses Sonnet for ALL phases)
         force_sonnet = os.environ.get('FORCE_SONNET', 'false').lower() == 'true'
         if force_sonnet:
-            model = "claude-3-5-sonnet-20241022"
+            model = "claude-sonnet-4-20250514"
             if self.verbose:
                 print(f"Using Sonnet for {phase_name} (FORCE_SONNET enabled)")
             return model
         
         # Default behavior: Sonnet for mechanical phases, Opus for complex phases
-        mechanical_phases = ["lint", "typecheck"]
+        mechanical_phases = ["architecture", "lint", "typecheck"]
         if phase_name in mechanical_phases:
-            model = "claude-3-5-sonnet-20241022"
+            model = "claude-sonnet-4-20250514"
             if self.verbose:
                 print(f"Using Sonnet for {phase_name} (cost-effective for mechanical tasks)")
             return model
@@ -572,6 +491,17 @@ Write to it: PHASE_COMPLETE"""
             if self.verbose:
                 print(f"Using default model (Opus) for {phase_name} (complex reasoning)")
             return None  # None means use default (Opus)
+    
+    async def _execute_query_with_wrapper(self, prompt: str, options: ClaudeCodeOptions) -> List[Any]:
+        """Execute query using V3 wrapper if available, fallback to original SDK"""
+        messages = []
+        query_func = query_v3 if V3_SDK_AVAILABLE else query
+        query_args = (prompt, options, self.working_dir, self.verbose) if V3_SDK_AVAILABLE else (prompt, options)
+        
+        async for message in query_func(*query_args):
+            messages.append(message)
+        
+        return messages
     
     async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase using Claude Code SDK with full conversation preservation"""
@@ -608,7 +538,7 @@ Write to it: PHASE_COMPLETE"""
         model = self._select_model_for_phase(phase.name)
         
         options = ClaudeCodeOptions(
-            max_turns=phase.max_turns,
+            max_turns=999999 if self.infinite_mode else phase.max_turns,  # Override for infinite mode
             allowed_tools=phase.allowed_tools,
             disallowed_tools=disallowed,
             mcp_servers=mcp_servers,
@@ -619,7 +549,7 @@ Write to it: PHASE_COMPLETE"""
         
         # Track messages for conversation context (with memory limit)
         messages: List[Message] = []
-        max_messages = 500  # Limit message history to prevent memory leaks
+        max_messages = 10000 if self.infinite_mode else 500  # Extend buffer in infinite mode
         
         # Always create log file for debugging
         log_dir = self.working_dir / ".cc_automator" / "logs"
@@ -636,32 +566,37 @@ Write to it: PHASE_COMPLETE"""
         websearch_timeout_seconds = 30
         
         try:
-            # Execute query with WebSearch timeout handling and SDK error recovery
-            async for message in query(prompt=phase.prompt, options=options):
+            # Execute query with V3 SDK wrapper or fallback to original
+            query_func = query_v3 if V3_SDK_AVAILABLE else query
+            query_args = (phase.prompt, options, self.working_dir, self.verbose) if V3_SDK_AVAILABLE else (phase.prompt, options)
+            
+            async for message in query_func(*query_args):
                 messages.append(message)
                 
                 # Prevent memory leaks by limiting message history
                 if len(messages) > max_messages:
                     messages = messages[-max_messages//2:]  # Keep last half
                 
-                # Track WebSearch timing
-                if hasattr(message, 'content') and isinstance(message.content, list):
-                    for item in message.content:
-                        if hasattr(item, 'name') and item.name == 'WebSearch':
-                            websearch_start_time = time.time()
-                            if self.verbose:
-                                print(f"⏱️  WebSearch started, will timeout after {websearch_timeout_seconds}s")
+                # For V3, WebSearch timing is handled internally, for legacy we need to track it
+                if not V3_SDK_AVAILABLE:
+                    # Track WebSearch timing for legacy SDK
+                    if hasattr(message, 'content') and isinstance(message.content, list):
+                        for item in message.content:
+                            if hasattr(item, 'name') and item.name == 'WebSearch':
+                                websearch_start_time = time.time()
+                                if self.verbose:
+                                    print(f"⏱️  WebSearch started, will timeout after {websearch_timeout_seconds}s")
+                    
+                    # Check for WebSearch timeout in legacy SDK
+                    if websearch_start_time and (time.time() - websearch_start_time) > websearch_timeout_seconds:
+                        print(f"⚠️  WebSearch timeout after {websearch_timeout_seconds}s, continuing without results")
+                        websearch_start_time = None  # Reset to prevent repeated warnings
                 
-                # Check for WebSearch timeout
-                if websearch_start_time and (time.time() - websearch_start_time) > websearch_timeout_seconds:
-                    print(f"⚠️  WebSearch timeout after {websearch_timeout_seconds}s, continuing without results")
-                    websearch_start_time = None  # Reset to prevent repeated warnings
-                
-                # Convert message to dict if it's an object
-                if hasattr(message, '__dict__'):
-                    msg_dict = message.__dict__
-                elif isinstance(message, dict):
-                    msg_dict = message
+                # Convert message to dict if it's an object (handle both V3 dict format and legacy object format)
+                if isinstance(message, dict):
+                    msg_dict = message  # V3 already provides dict format
+                elif hasattr(message, '__dict__'):
+                    msg_dict = message.__dict__  # Legacy object format
                 else:
                     msg_dict = {"type": "unknown", "content": str(message)}
                 
@@ -797,42 +732,51 @@ Write to it: PHASE_COMPLETE"""
                         print(f"✗ Phase {phase.name} failed: {msg_dict.get('subtype')}")
                         
         except Exception as e:
-            # Check if this is an async cleanup error after successful completion
-            if phase.status == PhaseStatus.COMPLETED and "TaskGroup" in str(e):
-                # Phase already completed successfully, this is just a cleanup issue
-                if self.verbose:
-                    print(f"  (Ignoring async cleanup error: {str(e)[:50]}...)")
-            else:
-                # Special handling for TaskGroup errors - these are known SDK bugs, re-raise for CLI fallback
-                if "TaskGroup" in str(e) and "unhandled errors" in str(e):
-                    print(f"⚠️  TaskGroup error in phase {phase.name}, will trigger CLI fallback...")
-                    # Re-raise the exception to trigger CLI fallback in execute_phase
-                    raise
-                # Handle Claude Code SDK cost parsing errors gracefully
-                elif "cost_usd" in str(e) or ("KeyError" in str(e) and "cost" in str(e)):
-                    print(f"⚠️  Claude Code SDK cost parsing error (continuing): {e}")
-                    # Check if we got any useful output despite the error
-                    if messages:
-                        print(f"✅ Recovered {len(messages)} messages despite SDK error")
-                        phase.status = PhaseStatus.COMPLETED
-                        phase.evidence = f"Phase completed with {len(messages)} messages (SDK cost error handled)"
-                        phase.cost_usd = 0.0  # Can't determine cost due to SDK error
-                        return phase
-                    else:
-                        # No messages recovered, treat as failure
-                        phase.status = PhaseStatus.FAILED
-                        phase.error = f"SDK cost parsing error with no recovered output: {str(e)}"
-                        print(f"✗ SDK cost error with no output in phase {phase.name}")
-                else:
-                    phase.status = PhaseStatus.FAILED
-                    phase.error = f"SDK error: {str(e)}"
-                    print(f"✗ SDK error in phase {phase.name}: {str(e)}")
+            # V3 error handling - TaskGroup issues should be resolved
+            if V3_SDK_AVAILABLE:
+                # With V3, TaskGroup errors should not occur
+                if "TaskGroup" in str(e):
+                    print(f"⚠️  Unexpected TaskGroup error in V3 SDK: {str(e)}")
+                    print(f"   This suggests a V3 implementation issue that needs investigation")
                 
-                # Check if it's an API key issue
-                if "ANTHROPIC_API_KEY" in str(e) or "authentication" in str(e).lower():
+                # Handle WebSearch timeout gracefully (V3 should handle this internally)
+                if "websearch" in str(e).lower() or "timeout" in str(e).lower():
+                    print(f"⚠️  WebSearch/timeout issue: {str(e)}")
+                    # Check if we got partial work done
+                    if messages and phase.status == PhaseStatus.COMPLETED:
+                        print(f"✅ Work completed despite timeout, continuing...")
+                        return phase
+                
+                # Authentication issues
+                if "api_key" in str(e).lower() or "authentication" in str(e).lower():
                     phase.error = "API key not set - export ANTHROPIC_API_KEY"
-                elif "claude-code-sdk" in str(e):
-                    phase.error = "SDK not installed - run: pip install claude-code-sdk"
+                    phase.status = PhaseStatus.FAILED
+                    print(f"🔑 Authentication error in phase {phase.name}")
+                else:
+                    # Real execution error in V3
+                    phase.status = PhaseStatus.FAILED
+                    phase.error = f"V3 SDK error: {str(e)}"
+                    print(f"❌ V3 SDK execution error in phase {phase.name}: {str(e)}")
+            else:
+                # Legacy error handling for V2/original SDK
+                if phase.status == PhaseStatus.COMPLETED and "TaskGroup" in str(e):
+                    # Phase already completed successfully, this is just cleanup noise
+                    if self.verbose:
+                        print(f"  (Ignoring async cleanup error: {str(e)[:50]}...)")
+                else:
+                    # Handle various legacy SDK errors
+                    if "cost_usd" in str(e) or ("KeyError" in str(e) and "cost" in str(e)):
+                        print(f"⚠️  Legacy SDK cost parsing error (continuing): {e}")
+                        if messages:
+                            print(f"✅ Recovered {len(messages)} messages despite SDK error")
+                            phase.status = PhaseStatus.COMPLETED
+                            phase.evidence = f"Phase completed with {len(messages)} messages (cost error handled)"
+                            phase.cost_usd = 0.0
+                            return phase
+                    else:
+                        phase.status = PhaseStatus.FAILED
+                        phase.error = f"Legacy SDK error: {str(e)}"
+                        print(f"✗ Legacy SDK error in phase {phase.name}: {str(e)}")
                 
         finally:
             phase.end_time = datetime.now()
@@ -943,11 +887,10 @@ Complete the phase now."""
                 permission_mode="bypassPermissions"
             )
             
-            recovery_messages = []
-            async for message in query(prompt=recovery_prompt, options=options):
-                recovery_messages.append(message)
+            recovery_messages = await self._execute_query_with_wrapper(recovery_prompt, options)
                 
-                # Check for completion
+            # Check for completion
+            for message in recovery_messages:
                 if hasattr(message, '__dict__'):
                     msg_dict = message.__dict__
                 elif isinstance(message, dict):
@@ -1048,12 +991,11 @@ Complete the phase now."""
                     permission_mode="bypassPermissions"
                 )
                 
-                sub_messages = []
-                async for message in query(prompt=sub_prompt, options=options):
-                    sub_messages.append(message)
-                    all_messages.append(message)
+                sub_messages = await self._execute_query_with_wrapper(sub_prompt, options)
+                all_messages.extend(sub_messages)
                     
-                    # Check for completion
+                # Check for completion
+                for message in sub_messages:
                     if hasattr(message, '__dict__'):
                         msg_dict = message.__dict__
                     elif isinstance(message, dict):
@@ -1229,8 +1171,24 @@ Complete the phase now."""
                 output_content = "# Implementation Output\n\n" + "\n".join(files_created)
                 
         # For mechanical phases, capture validation results as evidence
-        if not output_content and phase.name in ["lint", "typecheck", "commit"]:
-            if phase.name == "lint":
+        if not output_content and phase.name in ["architecture", "lint", "typecheck", "commit"]:
+            if phase.name == "architecture":
+                try:
+                    from .architecture_validator import ArchitectureValidator
+                    validator = ArchitectureValidator(self.working_dir)
+                    is_valid, issues = validator.validate_all()
+                    
+                    if is_valid:
+                        output_content = "# Architecture Phase Evidence\n\nArchitecture validation passed - zero violations found.\n"
+                    else:
+                        issue_list = "\n".join(f"- {issue}" for issue in issues[:10])  # Show first 10 issues
+                        output_content = f"# Architecture Phase Evidence\n\nArchitecture violations found:\n{issue_list}\n"
+                        if len(issues) > 10:
+                            output_content += f"\n... and {len(issues) - 10} more issues\n"
+                except Exception as e:
+                    output_content = f"# Architecture Phase Evidence\n\nArchitecture validation error: {e}\n"
+                    
+            elif phase.name == "lint":
                 try:
                     result = subprocess.run(["flake8", "--select=F"], 
                                           capture_output=True, text=True, cwd=str(self.working_dir), timeout=15)
@@ -1401,6 +1359,30 @@ Complete the phase now."""
             else:
                 return "Plan file exists but doesn't have enough content (must be >50 characters)."
                 
+        elif phase.name == "architecture":
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            architecture_files = list(milestone_dir.glob("*architecture*.md"))
+            
+            if not architecture_files:
+                return f"Missing required architecture review file. You must create: {milestone_dir}/architecture_review.md (or architecture.md) with architectural analysis results."
+            
+            # Check ArchitectureValidator for specific issues
+            try:
+                from .architecture_validator import ArchitectureValidator
+                validator = ArchitectureValidator(self.working_dir)
+                is_valid, issues = validator.validate_all()
+                
+                if not is_valid:
+                    issue_summary = "\n".join(f"- {issue}" for issue in issues[:5])
+                    if len(issues) > 5:
+                        issue_summary += f"\n... and {len(issues) - 5} more issues"
+                    return f"Architecture validation failed with {len(issues)} violations. Fix these issues:\n{issue_summary}"
+                else:
+                    return "Architecture review file exists but validation is failing for unknown reasons."
+            except Exception as e:
+                return f"Architecture validation error: {e}. Check that ArchitectureValidator is properly imported and working."
+                
         elif phase.name == "test":
             # Try to capture actual pytest output
             try:
@@ -1509,14 +1491,14 @@ Focus on creating the exact files and outputs that validation is looking for.
         )
         
         try:
-            retry_messages = []
-            async for message in query(prompt=retry_prompt, options=options):
-                retry_messages.append(message)
-                
-                # Prevent memory leaks in retry loops
-                if len(retry_messages) > 100:
-                    retry_messages = retry_messages[-50:]
-                
+            retry_messages = await self._execute_query_with_wrapper(retry_prompt, options)
+            
+            # Prevent memory leaks in retry loops
+            if len(retry_messages) > 100:
+                retry_messages = retry_messages[-50:]
+            
+            # Process messages for result detection
+            for message in retry_messages:
                 if hasattr(message, '__dict__'):
                     msg_dict = message.__dict__
                 elif isinstance(message, dict):
@@ -1605,14 +1587,14 @@ Be thorough and methodical in your approach.
         )
         
         try:
-            retry_messages = []
-            async for message in query(prompt=enhanced_prompt, options=options):
-                retry_messages.append(message)
+            retry_messages = await self._execute_query_with_wrapper(enhanced_prompt, options)
+            
+            # Prevent memory leaks in retry loops
+            if len(retry_messages) > 150:
+                retry_messages = retry_messages[-75:]
                 
-                # Prevent memory leaks in retry loops
-                if len(retry_messages) > 150:
-                    retry_messages = retry_messages[-75:]
-                
+            # Process messages for result detection
+            for message in retry_messages:
                 if hasattr(message, '__dict__'):
                     msg_dict = message.__dict__
                 elif isinstance(message, dict):
@@ -1680,8 +1662,10 @@ Be honest and analytical. If earlier phases have fundamental issues, stepping ba
         )
         
         try:
+            analysis_messages = await self._execute_query_with_wrapper(analysis_prompt, options)
             analysis_response = ""
-            async for message in query(prompt=analysis_prompt, options=options):
+            
+            for message in analysis_messages:
                 if hasattr(message, '__dict__'):
                     msg_dict = message.__dict__
                 elif isinstance(message, dict):
@@ -1770,26 +1754,58 @@ This is the final attempt before giving up. Make it count.
             model=model
         )
         
-        try:
-            async for message in query(prompt=final_prompt, options=options):
-                if hasattr(message, '__dict__'):
-                    msg_dict = message.__dict__
-                elif isinstance(message, dict):
-                    msg_dict = message
-                else:
-                    continue
-                    
-                if msg_dict.get("type") == "result":
-                    if msg_dict.get("is_error", False):
-                        print(f"✗ Final implementation attempt failed: {msg_dict.get('result', 'Unknown error')}")
-                        return False
+        # Infinite mode retry logic
+        attempt_count = 0
+        max_attempts = 1 if not self.infinite_mode else 999999  # Infinite attempts in infinite mode
+        
+        while attempt_count < max_attempts:
+            attempt_count += 1
+            
+            if attempt_count > 1:
+                print(f"🔄 Final Implementation Retry #{attempt_count}: {phase.name} (infinite mode)")
+                # Update the prompt for retry attempts
+                final_prompt = final_prompt.replace(
+                    "This is the final attempt before giving up. Make it count.",
+                    f"This is attempt #{attempt_count} in infinite mode - keep trying until success!"
+                )
+            
+            try:
+                final_messages = await self._execute_query_with_wrapper(final_prompt, options)
+                
+                for message in final_messages:
+                    if hasattr(message, '__dict__'):
+                        msg_dict = message.__dict__
+                    elif isinstance(message, dict):
+                        msg_dict = message
                     else:
-                        print(f"✓ Final implementation completed, re-validating...")
-                        return self._validate_phase_outputs(phase)
+                        continue
                         
-        except Exception as e:
-            print(f"✗ Final implementation attempt failed: {e}")
-            return False
+                    if msg_dict.get("type") == "result":
+                        if msg_dict.get("is_error", False):
+                            error_msg = msg_dict.get('result', 'Unknown error')
+                            print(f"✗ Final implementation attempt #{attempt_count} failed: {error_msg}")
+                            if not self.infinite_mode:
+                                return False
+                            # In infinite mode, break inner loop to try again
+                            break
+                        else:
+                            print(f"✓ Final implementation attempt #{attempt_count} completed, re-validating...")
+                            if self._validate_phase_outputs(phase):
+                                print(f"✅ Phase {phase.name} validation succeeded on attempt #{attempt_count}!")
+                                return True
+                            else:
+                                print(f"❌ Phase {phase.name} validation failed on attempt #{attempt_count}")
+                                if not self.infinite_mode:
+                                    return False
+                                # In infinite mode, break inner loop to try again
+                                break
+                                
+            except Exception as e:
+                print(f"✗ Final implementation attempt #{attempt_count} failed: {e}")
+                if not self.infinite_mode:
+                    return False
+                # In infinite mode, continue to next attempt
+                continue
         
         return False
     
@@ -2199,6 +2215,40 @@ Be thorough, complete, and anticipate what downstream phases will need from your
                 py_files = list(src_dir.glob("**/*.py"))
                 return len(py_files) > 0
             return False
+            
+        elif phase.name == "architecture":
+            # Check if architecture review was created AND ArchitectureValidator passes
+            milestone_num = getattr(self, 'current_milestone', 1)
+            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            
+            # First check for architecture_review.md or architecture.md
+            architecture_files = list(milestone_dir.glob("*architecture*.md"))
+            if not architecture_files:
+                if self.verbose:
+                    print(f"Architecture validation failed: no architecture review file found in {milestone_dir}")
+                return False
+            
+            # Run ArchitectureValidator to ensure zero violations
+            try:
+                from .architecture_validator import ArchitectureValidator
+                validator = ArchitectureValidator(self.working_dir)
+                is_valid, issues = validator.validate_all()
+                
+                if not is_valid:
+                    if self.verbose:
+                        print(f"Architecture validation failed: {len(issues)} violations found")
+                        for issue in issues[:5]:  # Show first 5 issues
+                            print(f"  - {issue}")
+                    return False
+                
+                if self.verbose:
+                    print("Architecture validation passed: zero violations found")
+                return True
+                
+            except Exception as e:
+                if self.verbose:
+                    print(f"Architecture validation error: {e}")
+                return False
             
         elif phase.name == "e2e":
             # Check if e2e evidence log was created AND main.py runs successfully

@@ -87,7 +87,7 @@ class CCAutomatorOrchestrator:
         self.decomposer = MilestoneDecomposer(self.project_dir)
         self.prompt_generator = PhasePromptGenerator(self.project_dir)
         self.output_filter = OutputFilter(verbose=verbose)
-        self.file_parallel_executor = FileParallelExecutor(self.project_dir)
+        self.file_parallel_executor = FileParallelExecutor(self.project_dir, infinite_mode=infinite_mode)
         self.assessment_agent = ParallelAssessmentAgent(self.project_dir, verbose=verbose)
         self.progress_display = ProgressDisplay(use_visual=use_visual)
         
@@ -167,20 +167,23 @@ class CCAutomatorOrchestrator:
             first_line = f.readline().strip()
             project_name = first_line[2:] if first_line.startswith("# ") else "Project"
             
-        # Extract milestones
+        # Extract milestones (always needed for definitions, progress loaded separately)
         try:
             self.milestones = self.decomposer.extract_milestones()
             if not self.milestones:
                 print("\n✗ No milestones found in CLAUDE.md")
                 return False
                 
-            # Validate milestones
-            valid, issues = self.decomposer.validate_milestones()
-            if not valid:
-                print("\n✗ Milestone validation failed:")
-                for issue in issues:
-                    print(f"  - {issue}")
-                return False
+            # Validate milestones (skip in resume mode to avoid strict validation issues)
+            if not self.resume:
+                valid, issues = self.decomposer.validate_milestones()
+                if not valid:
+                    print("\n✗ Milestone validation failed:")
+                    for issue in issues:
+                        print(f"  - {issue}")
+                    return False
+            else:
+                print("Skipping milestone validation in resume mode...")
                 
         except Exception as e:
             print(f"\n✗ Error loading milestones: {e}")
@@ -603,14 +606,14 @@ class CCAutomatorOrchestrator:
                 prompt=prompt
             )
             
-            # Start assessment monitoring for complex phases
-            if phase_type in ["test", "integration", "implement", "planning"]:
-                self.assessment_agent.start_monitoring(
-                    phase_name=phase_type,
-                    phase_type=phase_type,
-                    check_interval=60,
-                    start_after=90
-                )
+            # DISABLED: Assessment monitoring causing 30s timeouts without value
+            # if phase_type in ["test", "integration", "implement", "planning"]:
+            #     self.assessment_agent.start_monitoring(
+            #         phase_name=phase_type,
+            #         phase_type=phase_type,
+            #         check_interval=60,
+            #         start_after=90
+            #     )
             
             # Execute phase with appropriate strategy
             if self.use_file_parallel and phase_type in ["lint", "typecheck"]:

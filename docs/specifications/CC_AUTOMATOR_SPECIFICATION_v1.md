@@ -1,8 +1,16 @@
-# CC_AUTOMATOR3 - Complete Specification and Architecture
+# CC_AUTOMATOR4 - Complete Specification and Architecture
 
 ## Overview
 
-CC_AUTOMATOR3 is a fully autonomous code generation system that uses Claude Code to build complete software projects through isolated, sequential phases. Once configured and started, it runs for hours without human intervention, producing working software with comprehensive tests and documentation.
+CC_AUTOMATOR4 is a fully autonomous code generation system that uses Claude Code SDK to build complete software projects through isolated, sequential phases. Once configured and started, it runs for hours without human intervention, producing working software with comprehensive tests and documentation.
+
+## Current Architecture (2024)
+
+- **Execution Engine**: Claude Code SDK with async streaming
+- **Phase Model**: Sequential 10-phase pipeline per milestone
+- **Recovery Strategy**: Intelligent step-back with failure analysis
+- **Cost Optimization**: Sonnet for mechanical phases, Opus for creative work
+- **Fallback Strategy**: CLI only for TaskGroup async cleanup errors
 
 ## Core Philosophy
 
@@ -56,44 +64,62 @@ PHASES = [
     ("research",     "Analyze requirements and explore solutions"),
     ("planning",     "Create detailed implementation plan"),
     ("implement",    "Build the solution"),
+    ("architecture", "Review implementation architecture before mechanical phases"),
     ("lint",         "Fix code style issues (flake8)"),
     ("typecheck",    "Fix type errors (mypy --strict)"),
     ("test",         "Fix unit tests (pytest)"),
     ("integration",  "Fix integration tests"),
     ("e2e",          "Verify main.py runs successfully"),
+    ("validate",     "Validate all functionality is real, not mocked"),
     ("commit",       "Create git commit with changes")
 ]
 ```
 
+## Phase Dependencies
+
+```
+research → planning → implement → architecture → lint → typecheck → test → integration → e2e → validate → commit
+```
+
+- **Strict Sequential Execution**: Each phase must complete before next begins
+- **Step-back Capability**: Failure can trigger intelligent return to earlier phase
+- **Evidence-based Validation**: Each phase requires concrete proof of success
+- **No Parallelism**: All phases execute sequentially for reliability
+
 ## Key Design Decisions
 
-### 1. CLI-Based Isolation with Streaming
+### 1. SDK-First Execution with CLI Fallback
 
-**Decision**: Use `claude -p "prompt" --output-format stream-json` for each phase
+**Decision**: Use Claude Code SDK with async streaming, CLI only for TaskGroup errors
 
 **Reasoning**: 
 - Complete context isolation between phases
-- No context accumulation or confusion
-- Clear cost tracking per phase
-- Easy to resume from failures
-- Real-time progress monitoring
+- Cost tracking and session management
+- MCP integration for enhanced tools
+- Real-time streaming progress
+- Superior error handling and recovery
 
 **Implementation**:
 ```python
-# For monitoring progress in real-time
-process = subprocess.Popen([
-    "claude", "-p", phase_prompt,
-    "--output-format", "stream-json",
-    "--max-turns", "10",
-    "--allowedTools", "Read,Write,Edit,Bash"
-], stdout=subprocess.PIPE, text=True)
+# SDK-first execution with streaming
+options = ClaudeCodeOptions(
+    max_turns=phase.max_turns,
+    allowed_tools=phase.allowed_tools,
+    cwd=str(self.working_dir),
+    permission_mode="bypassPermissions",
+    model=self._select_model_for_phase(phase.name)
+)
 
-# Process streaming output
-for line in process.stdout:
-    if line.strip():
-        event = json.loads(line)
-        # Handle different event types
+# Async streaming execution
+async for message in query(prompt=phase.prompt, options=options):
+    # Process streaming messages
+    self._process_streaming_message(message)
 ```
+
+**CLI Fallback Strategy**:
+- Only triggered by TaskGroup async cleanup errors
+- Automatic detection of partial completion
+- Immediate fallback without retries for known SDK bugs
 
 ### 2. Smart Session Management
 
@@ -204,43 +230,117 @@ Run the tests and provide evidence:
 4. No paraphrasing - exact output only
 ```
 
-### 7. Sequential Implementation, Parallel Mechanical Fixes
+### 7. Sequential Phase Execution with Cost Optimization
 
-**Decision**: Implementation phase is sequential, mechanical fixes use git worktrees for parallelism
+**Decision**: All phases execute sequentially, mechanical phases use Sonnet for cost efficiency
 
 **Reasoning**:
-- Creative work (implementation) needs coherent design
-- Mechanical fixes can be safely parallelized
-- Git worktrees provide true isolation
-- Easier merging of small, focused changes
+- Sequential execution ensures reliability and clear dependency chains
+- Cost optimization through model selection for different phase types
+- Simpler debugging and state management
+- Eliminates merge conflicts and coordination complexity
 
-**Git Worktree Strategy**:
+**Model Selection Strategy**:
 ```python
-# Create isolated worktrees for parallel fixes
-def create_worktrees_for_parallel_fixes(fix_type, num_workers):
-    worktrees = []
-    for i in range(num_workers):
-        worktree_path = f"../worktree-{fix_type}-{i}"
-        subprocess.run(["git", "worktree", "add", worktree_path, "main"])
-        worktrees.append(worktree_path)
-    return worktrees
-
-# After fixes complete, merge back
-def merge_worktree_changes(worktree_path, branch_name):
-    subprocess.run(["git", "checkout", "main"])
-    subprocess.run(["git", "merge", f"worktree-{branch_name}"])
-    subprocess.run(["git", "worktree", "remove", worktree_path])
+def _select_model_for_phase(phase_name: str) -> Optional[str]:
+    # Check environment overrides first
+    if os.environ.get('FORCE_SONNET') == 'true':
+        return "claude-3-5-sonnet-20241022"
+    
+    # Mechanical phases use cost-effective Sonnet
+    mechanical_phases = ["lint", "typecheck"]
+    if phase_name in mechanical_phases:
+        return "claude-3-5-sonnet-20241022"
+    
+    # Creative phases use default model (Opus)
+    return None
 ```
 
-**Parallelizable with Worktrees**:
-- Lint fixes (by file)
-- Type fixes (by file) 
-- Test fixes (by test file)
-- Research tasks (read-only, no worktrees needed)
+**Sequential Benefits**:
+- Each phase builds on previous phase outputs
+- Clear error propagation and debugging
+- Predictable resource usage
+- No complex merge strategies needed
 
-**Merge Strategy**: After each phase completes, before next phase
+### 8. Intelligent Step-Back Recovery
 
-### 8. Iterative Fix Phases
+**Decision**: When phases fail, analyze root cause and step back to appropriate earlier phase
+
+**Reasoning**:
+- Early phase errors (research, planning) often cause later phase failures
+- Intelligent analysis determines optimal step-back target
+- Avoids wasted cycles on doomed implementations
+- Provides failure context to prevent repeating mistakes
+
+**Implementation**:
+```python
+async def _execute_intelligent_step_back(self, current_phase, original_feedback):
+    # Analyze failure to determine step-back target
+    step_back_to_phase = await self._analyze_failure_for_step_back(
+        current_phase, original_feedback
+    )
+    
+    # Create failure history for context
+    failure_history = {
+        "failed_phase": current_phase.name,
+        "original_feedback": original_feedback,
+        "analysis_insights": failure_insights,
+        "step_back_count": self.step_back_count
+    }
+    
+    # Re-execute with failure insights
+    success = await self._re_execute_phase_with_insights(
+        step_back_to_phase, failure_history
+    )
+    
+    if success:
+        # Re-execute all subsequent phases
+        return await self._re_execute_subsequent_phases(
+            step_back_to_phase, current_phase.name, failure_history
+        )
+```
+
+**Step-Back Limits**:
+- Normal mode: Maximum 3 step-backs per milestone
+- Infinite mode: Unlimited step-backs until success
+- Failure logs saved for debugging and analysis
+
+### 9. Architectural Quality Gate
+
+**Decision**: Insert architecture review phase between implement and mechanical phases
+
+**Reasoning**:
+- Catches structural issues before they waste cycles in lint/typecheck/test phases
+- Prevents "polishing a turd" scenario where poor architecture gets mechanically fixed
+- Enforces quality standards early when fixes are cheaper
+- Aligns with anti-cheating philosophy of preventing false progress
+
+**Architecture Standards Enforced**:
+- **Code Structure**: Functions ≤50 lines, classes ≤20 methods, files ≤1000 lines
+- **Import Structure**: No circular imports, proper `__init__.py` files, clean dependencies
+- **Design Patterns**: Separation of concerns, no hardcoded values, proper error handling
+- **Complexity Limits**: Cyclomatic complexity ≤10, nesting depth ≤4 levels
+- **Anti-Pattern Prevention**: No god objects, duplicate code, or mixed concerns
+
+**Implementation**:
+```python
+class ArchitectureValidator:
+    def validate_all(self) -> Tuple[bool, List[str]]:
+        self._check_code_structure()
+        self._check_import_structure() 
+        self._check_design_patterns()
+        self._check_complexity_metrics()
+        self._check_antipatterns()
+        return len(self.issues) == 0, self.issues
+```
+
+**Benefits**:
+- **Prevents Wasted Cycles**: Structural issues caught before mechanical phases
+- **Cost Optimization**: Fewer retry cycles in expensive phases
+- **Quality Assurance**: Enforces maintainable code standards
+- **Early Detection**: Problems found when fixes are simpler
+
+### 10. Iterative Fix Phases
 
 **Decision**: Keep running fix phases until clean (max 5 iterations)
 
@@ -437,10 +537,23 @@ After each phase:
 - Timeout = failure (not assumed success)
 - E2E tests run async to avoid timeout
 
-### Retry Logic
-- Max 2 retries per phase
-- Different approach on retry
-- Skip to next milestone if phase repeatedly fails
+### Multi-Level Retry Strategy
+
+**Decision**: Hierarchical retry system with escalating intervention
+
+**Implementation**:
+1. **Level 1**: Direct retry with enhanced feedback
+2. **Level 2**: Enhanced retry with detailed error analysis  
+3. **Level 3**: Intelligent step-back to root cause phase
+4. **Level 4**: Skip milestone if all recovery attempts fail
+
+**Step-Back Triggers**:
+- Test failures that indicate architectural issues
+- Type errors suggesting design flaws
+- Integration failures pointing to planning problems
+- E2E failures indicating research gaps
+
+**Infinite Mode**: Continue step-backs indefinitely until success (for debugging)
 
 ### Rollback Capability
 - Git stash before risky changes
@@ -504,11 +617,18 @@ python cc_automator4/run.py --resume
 ## Success Metrics
 
 A milestone is complete when:
-1. All phases completed successfully
-2. main.py runs without errors
-3. All tests pass (unit, integration, E2E)
-4. Evidence logs prove real execution
-5. Git commit created
+1. All 10 phases completed successfully in sequence
+2. main.py runs without errors and produces expected output
+3. **100% test passage**: Zero failures, zero errors (strict validation)
+4. Evidence logs prove real execution with concrete proof
+5. Validation phase confirms no mocked implementations
+6. Git commit created with proper message format
+
+**Anti-Cheating Validation**:
+- Test count parsing with regex to prevent partial success
+- Implementation validator checks for mocks/stubs in production code
+- E2E evidence logs required for completion
+- Independent validation commands verify all claims
 
 ## Future Enhancements (Not in V1)
 
@@ -520,16 +640,16 @@ A milestone is complete when:
 
 ## Summary
 
-CC_AUTOMATOR3 achieves reliable, autonomous code generation through:
-- **Isolated phases** preventing context pollution
-- **Real-time monitoring** via streaming JSON output
-- **Smart session tracking** with precise ID management
-- **True parallelism** using git worktrees for mechanical fixes
-- **Evidence-based validation** ensuring real functionality  
-- **Vertical milestones** maintaining testability
+CC_AUTOMATOR4 achieves reliable, autonomous code generation through:
+- **Sequential phase execution** with clear dependency chains
+- **SDK-first architecture** with intelligent CLI fallback
+- **Intelligent step-back recovery** from root cause analysis
+- **Evidence-based validation** with strict anti-cheating measures
+- **Cost optimization** through strategic model selection
+- **Vertical milestones** maintaining testability at each stage
 - **Think modes** for complex problem solving
 - **Self-healing patterns** for robust code generation
 - **Smart orchestration** handling failures gracefully
-- **Clear specifications** leaving no ambiguity
+- **100% success validation** requiring concrete proof
 
-The system transforms high-level requirements into working, tested, documented code without human intervention after initial setup.
+The system transforms high-level requirements into working, tested, documented code without human intervention after initial setup, with sophisticated recovery mechanisms that ensure reliability and prevent false positives.

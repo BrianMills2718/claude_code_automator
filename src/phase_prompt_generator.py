@@ -178,6 +178,90 @@ Create the implementation based on the plan.
 After implementation, test with: python main.py
 """,
 
+            "architecture": f"""
+## Architecture Review Phase
+
+Review the implementation for {milestone.name} to ensure good architectural quality BEFORE proceeding to mechanical phases.
+
+### CRITICAL MISSION: Prevent Wasted Cycles
+
+Your goal is to catch architectural issues that would cause lint/typecheck/test phases to waste time and API costs. Fix structural problems NOW, not later.
+
+### Architecture Standards to Enforce:
+
+#### 1. **Code Structure**
+- Functions ≤ 50 lines (break down larger ones)
+- Classes ≤ 20 methods (split responsibilities)  
+- Files ≤ 1000 lines (create modules)
+- Nesting depth ≤ 4 levels (flatten complex logic)
+- Function parameters ≤ 5 (use data classes/configs)
+
+#### 2. **Import Structure**
+- Add missing `__init__.py` files in src/ directories
+- Fix circular imports (restructure if needed)
+- Use relative imports within project modules
+- Group imports: stdlib, third-party, local
+
+#### 3. **Design Patterns**
+- Separate UI code from business logic (except main.py)
+- Extract hardcoded values to constants/config
+- Implement proper error handling patterns
+- Use dependency injection for testability
+
+#### 4. **Complexity Management**
+- Cyclomatic complexity ≤ 10 per function
+- Break down complex conditionals
+- Extract repeated code into functions
+- Use early returns to reduce nesting
+
+#### 5. **Anti-Pattern Prevention**
+- No god objects (classes with too many responsibilities)
+- No long parameter lists
+- No duplicate code blocks
+- No mixed concerns (business logic + UI in same module)
+
+### Required Actions:
+1. **Run Architecture Validation**:
+```python
+from src.architecture_validator import ArchitectureValidator
+from pathlib import Path
+validator = ArchitectureValidator(Path('.'))
+is_valid, issues = validator.validate_all()
+print('ARCHITECTURE VALIDATION RESULTS:')
+if is_valid:
+    print('✓ All architecture checks passed')
+else:
+    print('✗ Architecture issues found:')
+    for issue in issues:
+        print(f'  - {{issue}}')
+```
+
+2. **Fix ALL Issues Found** - No compromises allowed
+3. **Re-run validation** to confirm zero issues
+4. **Create architecture_review.md** in milestone directory with:
+   - List of issues found and fixed
+   - Final validation showing all checks passed
+   - Brief explanation of any major restructuring
+
+### SUCCESS CRITERIA:
+- Zero architecture violations
+- Well-structured, maintainable code
+- Clean import structure
+- Appropriate complexity levels
+- Evidence of thorough review
+
+### FAILURE CONSEQUENCES:
+If you skip this review, subsequent phases will waste cycles:
+- **Lint phase**: Breaking down monolithic functions
+- **Typecheck phase**: Fixing import structure issues  
+- **Test phase**: Working around tightly coupled code
+- **Integration phase**: Debugging complex interactions
+
+Save results to: .cc_automator/milestones/milestone_{milestone.number}/architecture_review.md
+
+REMEMBER: This phase prevents wasted API costs in later phases. Be thorough!
+""",
+
             "lint": """Run flake8 and fix F errors only:
 
 1. flake8 --select=F --exclude=venv,__pycache__,.git

@@ -28,9 +28,10 @@ class FileError:
 class FileParallelExecutor:
     """Executes mechanical fixes on individual files in parallel"""
     
-    def __init__(self, project_dir: Path, max_workers: int = 4):
+    def __init__(self, project_dir: Path, max_workers: int = 4, infinite_mode: bool = False):
         self.project_dir = Path(project_dir)
         self.max_workers = max_workers
+        self.infinite_mode = infinite_mode
         
     def parse_flake8_output(self, output: str) -> Dict[str, List[FileError]]:
         """Parse flake8 output and group errors by file"""
@@ -112,7 +113,8 @@ class FileParallelExecutor:
         return errors_by_file
     
     def create_file_fix_prompt(self, file_path: str, errors: List[FileError], 
-                              fix_type: str) -> str:
+                              fix_type: str, attempt_number: int = 1, 
+                              failed_attempts: List[str] = None) -> str:
         """Create a prompt for fixing errors in a specific file"""
         
         # Read the file content
@@ -137,7 +139,23 @@ class FileParallelExecutor:
         
         errors_text = "\n".join(error_list)
         
-        prompt = f"""## Fix {fix_type} errors in {file_path}
+        # Add context about previous attempts
+        attempt_context = ""
+        if attempt_number > 1:
+            attempt_context = f"""
+### ⚠️  IMPORTANT - PREVIOUS ATTEMPT #{attempt_number-1} FAILED
+This is attempt #{attempt_number} to fix these errors. Previous attempts have failed.
+You MUST try a different approach than whatever was tried before.
+
+"""
+            if failed_attempts:
+                attempt_context += f"""### Previous Failed Approaches:
+{chr(10).join(failed_attempts)}
+
+### CRITICAL: Try a completely different strategy this time.
+"""
+        
+        prompt = f"""## Fix {fix_type} errors in {file_path}{attempt_context}
 
 ### File Content:
 ```python
@@ -153,6 +171,7 @@ class FileParallelExecutor:
 3. Maintain exact formatting and style
 4. Use type hints properly (for mypy errors)
 5. Remove unused imports (for F401 errors)
+{"6. CRITICAL: This is attempt #" + str(attempt_number) + " - use a different approach if previous attempts failed" if attempt_number > 1 else ""}
 
 Fix the errors and save the file.
 
@@ -163,13 +182,13 @@ Write to it: PHASE_COMPLETE
         return prompt
     
     def execute_file_fix(self, file_path: str, errors: List[FileError], 
-                        fix_type: str, orchestrator) -> Dict[str, Any]:
+                        fix_type: str, orchestrator, attempt_number: int = 1) -> Dict[str, Any]:
         """Execute fix for a single file"""
         
         print(f"  🔧 Fixing {fix_type} errors in {file_path} ({len(errors)} errors)")
         
         try:
-            prompt = self.create_file_fix_prompt(file_path, errors, fix_type)
+            prompt = self.create_file_fix_prompt(file_path, errors, fix_type, attempt_number)
             if not prompt:
                 return {"status": "skipped", "file": file_path, "reason": "File not found"}
             
@@ -186,14 +205,12 @@ Write to it: PHASE_COMPLETE
             
             # Use shorter timeout for file-level fixes
             phase.timeout_seconds = 300  # 5 minutes per file
-            phase.max_turns = 10  # Fewer turns needed for focused fixes
+            # Respect infinite mode for max turns
+            phase.max_turns = 999999 if self.infinite_mode else 10
+            if self.infinite_mode:
+                print(f"  🔄 INFINITE MODE: Phase {phase.name} has unlimited turns")
             
             # Execute the fix
-            print(f"  DEBUG: About to call orchestrator.execute_phase")
-            print(f"  DEBUG: phase.name = {phase.name}")
-            print(f"  DEBUG: phase.allowed_tools = {phase.allowed_tools}")
-            print(f"  DEBUG: type(phase.allowed_tools) = {type(phase.allowed_tools)}")
-            
             try:
                 result = orchestrator.execute_phase(phase)
             except TypeError as te:
@@ -226,11 +243,7 @@ Write to it: PHASE_COMPLETE
             print(f"     Full traceback:")
             print(error_details)
             
-            # Additional debugging for join errors
-            if "join" in str(e).lower():
-                print(f"     DEBUG: This appears to be a join error")
-                print(f"     Phase allowed_tools: {phase.allowed_tools}")
-                print(f"     Type of allowed_tools: {type(phase.allowed_tools)}")
+            # Simplified error handling (removed debug output)
             
             return {
                 "status": "failed",
@@ -246,7 +259,10 @@ Write to it: PHASE_COMPLETE
         
         all_results = []
         iteration = 0
-        max_iterations = 5  # Prevent infinite loops
+        # Respect infinite mode for iterations
+        max_iterations = 999999 if self.infinite_mode else 5
+        if self.infinite_mode:
+            print(f"🔄 INFINITE MODE: No iteration limit for lint phase")
         
         while iteration < max_iterations:
             iteration += 1
@@ -282,7 +298,7 @@ Write to it: PHASE_COMPLETE
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all file fixes
                 future_to_file = {
-                    executor.submit(self.execute_file_fix, file_path, errors, "lint", orchestrator): file_path
+                    executor.submit(self.execute_file_fix, file_path, errors, "lint", orchestrator, iteration): file_path
                     for file_path, errors in errors_by_file.items()
                 }
                 
@@ -341,7 +357,12 @@ Write to it: PHASE_COMPLETE
         
         all_results = []
         iteration = 0
-        max_iterations = 5  # Prevent infinite loops
+        previous_errors = None
+        stagnant_iterations = 0
+        # Respect infinite mode for iterations
+        max_iterations = 999999 if self.infinite_mode else 5
+        if self.infinite_mode:
+            print(f"🔄 INFINITE MODE: No iteration limit for typecheck phase")
         
         while iteration < max_iterations:
             iteration += 1
@@ -366,6 +387,22 @@ Write to it: PHASE_COMPLETE
                 print("✅ No type errors to fix")
                 return True, all_results
             
+            # Check for stagnation (same errors repeating)
+            current_error_signature = str(sorted([(f, len(errs)) for f, errs in errors_by_file.items()]))
+            if current_error_signature == previous_errors:
+                stagnant_iterations += 1
+                print(f"⚠️  Same errors detected for {stagnant_iterations} iterations")
+                if stagnant_iterations >= 3 and not self.infinite_mode:
+                    print(f"🛑 Breaking infinite loop - same errors persist after {stagnant_iterations} attempts")
+                    break
+                elif stagnant_iterations >= 10 and self.infinite_mode:
+                    # Even in infinite mode, break after 10 stagnant iterations to prevent true infinite loops
+                    print(f"🛑 Breaking after {stagnant_iterations} stagnant iterations (infinite mode safety)")
+                    break
+            else:
+                stagnant_iterations = 0
+                previous_errors = current_error_signature
+            
             print(f"\n📊 Found type errors in {len(errors_by_file)} files")
             for file_path, errors in errors_by_file.items():
                 print(f"  - {file_path}: {len(errors)} errors")
@@ -377,7 +414,7 @@ Write to it: PHASE_COMPLETE
             with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
                 # Submit all file fixes
                 future_to_file = {
-                    executor.submit(self.execute_file_fix, file_path, errors, "typecheck", orchestrator): file_path
+                    executor.submit(self.execute_file_fix, file_path, errors, "typecheck", orchestrator, iteration): file_path
                     for file_path, errors in errors_by_file.items()
                 }
                 
