@@ -1192,9 +1192,7 @@ Complete the phase now."""
         if not self.current_milestone or phase.status != PhaseStatus.COMPLETED:
             return
             
-        # Skip evidence saving for mechanical phases that don't produce documents
-        if phase.name in ["lint", "typecheck", "commit"]:
-            return
+        # All phases save evidence - mechanical phases save validation results
             
         milestone_dir = self.working_dir / ".cc_automator" / "milestones" / f"milestone_{self.current_milestone}"
         milestone_dir.mkdir(parents=True, exist_ok=True)
@@ -1229,6 +1227,41 @@ Complete the phase now."""
                     
             if files_created:
                 output_content = "# Implementation Output\n\n" + "\n".join(files_created)
+                
+        # For mechanical phases, capture validation results as evidence
+        if not output_content and phase.name in ["lint", "typecheck", "commit"]:
+            if phase.name == "lint":
+                try:
+                    result = subprocess.run(["flake8", "--select=F"], 
+                                          capture_output=True, text=True, cwd=str(self.working_dir), timeout=15)
+                    if result.returncode == 0:
+                        output_content = "# Lint Phase Evidence\n\nFlake8 validation passed - no F-errors found.\n"
+                    else:
+                        output_content = f"# Lint Phase Evidence\n\nFlake8 errors found:\n```\n{result.stdout}\n{result.stderr}\n```\n"
+                except Exception as e:
+                    output_content = f"# Lint Phase Evidence\n\nFlake8 validation error: {e}\n"
+                    
+            elif phase.name == "typecheck":
+                try:
+                    result = subprocess.run(["mypy", "--strict", "."], 
+                                          capture_output=True, text=True, cwd=str(self.working_dir), timeout=30)
+                    if result.returncode == 0:
+                        output_content = "# Typecheck Phase Evidence\n\nMyPy validation passed - no type errors found.\n"
+                    else:
+                        output_content = f"# Typecheck Phase Evidence\n\nMyPy errors found:\n```\n{result.stdout}\n{result.stderr}\n```\n"
+                except Exception as e:
+                    output_content = f"# Typecheck Phase Evidence\n\nMyPy validation error: {e}\n"
+                    
+            elif phase.name == "commit":
+                try:
+                    result = subprocess.run(["git", "log", "-1", "--oneline"], 
+                                          capture_output=True, text=True, cwd=str(self.working_dir), timeout=10)
+                    if result.returncode == 0:
+                        output_content = f"# Commit Phase Evidence\n\nGit commit created:\n```\n{result.stdout.strip()}\n```\n"
+                    else:
+                        output_content = "# Commit Phase Evidence\n\nNo git commit found.\n"
+                except Exception as e:
+                    output_content = f"# Commit Phase Evidence\n\nGit validation error: {e}\n"
                 
         # Save the evidence
         if output_content:
@@ -1369,15 +1402,51 @@ Complete the phase now."""
                 return "Plan file exists but doesn't have enough content (must be >50 characters)."
                 
         elif phase.name == "test":
+            # Try to capture actual pytest output
+            try:
+                result = subprocess.run(["python", "-m", "pytest", "tests/unit", "-v"], 
+                                      capture_output=True, text=True, cwd=str(self.working_dir), timeout=30)
+                error_output = result.stdout + result.stderr
+                if error_output.strip():
+                    return f"Unit tests are failing. Specific errors:\n{error_output[:1000]}"
+            except:
+                pass
             return "Unit tests are failing. Run 'python -m pytest tests/unit -v' to see specific test failures and fix them."
             
         elif phase.name == "integration":
+            # Try to capture actual pytest output
+            try:
+                result = subprocess.run(["python", "-m", "pytest", "tests/integration", "-v"], 
+                                      capture_output=True, text=True, cwd=str(self.working_dir), timeout=30)
+                error_output = result.stdout + result.stderr
+                if error_output.strip():
+                    return f"Integration tests are failing. Specific errors:\n{error_output[:1000]}"
+            except:
+                pass
             return "Integration tests are failing. Run 'python -m pytest tests/integration -v' to see specific test failures and fix them."
             
         elif phase.name == "lint":
+            # Try to capture actual flake8 output
+            try:
+                result = subprocess.run(["flake8", "--select=F"], 
+                                      capture_output=True, text=True, cwd=str(self.working_dir), timeout=15)
+                error_output = result.stdout + result.stderr
+                if error_output.strip():
+                    return f"Flake8 linting errors found. Specific errors:\n{error_output[:1000]}"
+            except:
+                pass
             return "Flake8 linting errors found. Run 'flake8 --select=F' to see specific errors and fix them."
             
         elif phase.name == "typecheck":
+            # Try to capture actual mypy output
+            try:
+                result = subprocess.run(["mypy", "--strict", "."], 
+                                      capture_output=True, text=True, cwd=str(self.working_dir), timeout=30)
+                error_output = result.stdout + result.stderr
+                if error_output.strip():
+                    return f"MyPy type checking errors found. Specific errors:\n{error_output[:1000]}"
+            except:
+                pass
             return "MyPy type checking errors found. Run 'mypy --strict .' to see specific errors and fix them."
             
         elif phase.name == "implement":
@@ -2209,7 +2278,7 @@ Be thorough, complete, and anticipate what downstream phases will need from your
 # Default phase configurations based on specification
 # Format: (name, description, allowed_tools, think_mode, max_turns_override)
 PHASE_CONFIGS = [
-    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "mcp__cc-automator-tools__safe_websearch", "mcp__cc-automator-tools__project_context_analyzer"], None, 15),
+    ("research",     "Analyze requirements and explore solutions", ["Read", "Grep", "Bash", "Write", "Edit", "mcp__cc-automator-tools__safe_websearch", "mcp__cc-automator-tools__project_context_analyzer"], None, 30),
     ("planning",     "Create detailed implementation plan", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__project_context_analyzer", "mcp__cc-automator-tools__safe_command_runner"], None, 50),
     ("implement",    "Build the solution", ["Read", "Write", "Edit", "MultiEdit", "mcp__cc-automator-tools__safe_file_operations"], None, 50),
     ("lint",         "Fix code style issues (flake8)", ["Read", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
@@ -2217,7 +2286,7 @@ PHASE_CONFIGS = [
     ("test",         "Fix unit tests (pytest)", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 30),
     ("integration",  "Fix integration tests", ["Read", "Write", "Edit", "Bash", "mcp__cc-automator-tools__safe_command_runner"], None, 30),
     ("e2e",          "Verify main.py runs successfully", ["Read", "Bash", "Write", "mcp__cc-automator-tools__safe_command_runner"], None, 20),
-    ("validate",     "Validate all implementations are real", ["Read", "Bash", "Write", "Edit", "Grep", "mcp__cc-automator-tools__safe_command_runner"], None, 25),
+    ("validate",     "Validate all implementations are real", ["Read", "Bash", "Write", "Edit", "Grep", "mcp__cc-automator-tools__safe_command_runner"], None, 50),
     ("commit",       "Create git commit with changes", ["Bash", "Read"], None, 15)
 ]
 
