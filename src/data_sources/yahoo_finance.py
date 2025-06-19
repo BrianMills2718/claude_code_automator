@@ -1,0 +1,96 @@
+from datetime import date, datetime
+from typing import Dict, List, Optional
+import yfinance as yf
+from tenacity import retry, stop_after_attempt, wait_exponential
+
+from .. import settings
+from .base import DataSourceBase, MarketData
+from .exceptions import APIError
+
+class YahooFinanceAdapter(DataSourceBase):
+    """Yahoo Finance API adapter with exponential backoff."""
+
+    def _create_market_data(self, symbol: str, index: datetime, row: Dict) -> MarketData:
+        """Create MarketData instance from DataFrame row."""
+        return MarketData(
+            symbol=symbol,
+            timestamp=index.to_pydatetime(),
+            open=row['Open'],
+            high=row['High'],
+            low=row['Low'],
+            close=row['Close'],
+            volume=int(row['Volume']),
+            source='yahoo_finance'
+        )
+    
+    def _make_retry_decorator(self):
+        """Create retry decorator with standard settings."""
+        return retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=4, max=settings.YAHOO_FINANCE_BACKOFF_MAX)
+        )
+
+    def _handle_api_error(self, e: Exception) -> None:
+        """Handle Yahoo Finance API errors."""
+        raise APIError(f"Yahoo Finance API error: {str(e)}")
+
+    def _execute_with_error_handling(self, operation):
+        """Execute operation with standard error handling."""
+        try:
+            return operation()
+        except Exception as e:
+            self._handle_api_error(e)
+
+    async def get_daily_prices(
+        self,
+        symbol: str,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[MarketData]:
+        def _get_daily():
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(
+                start=start_date,
+                end=end_date,
+                interval='1d'
+            )
+            return [self._create_market_data(symbol, index, row) for index, row in df.iterrows()]
+        
+        return self._execute_with_error_handling(_get_daily)
+
+    async def get_intraday_prices(
+        self,
+        symbol: str,
+        interval: int = 5,
+        limit: Optional[int] = None
+    ) -> List[MarketData]:
+        def _get_intraday():
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(
+                period='1d' if limit and limit <= 100 else '7d',
+                interval=f"{interval}m"
+            )
+            market_data = [self._create_market_data(symbol, index, row) for index, row in df.iterrows()]
+            return market_data[:limit] if limit else market_data
+        
+        return self._execute_with_error_handling(_get_intraday)
+
+    # Apply retry decorator to methods
+    get_daily_prices = _make_retry_decorator(get_daily_prices)
+    get_intraday_prices = _make_retry_decorator(get_intraday_prices)
+
+    async def search_symbols(self, query: str) -> List[Dict[str, str]]:
+        def _search():
+            tickers = yf.Tickers(query)
+            return [
+                {
+                    'symbol': ticker.ticker,
+                    'name': ticker.info.get('longName', ''),
+                    'type': ticker.info.get('quoteType', ''),
+                    'exchange': ticker.info.get('exchange', '')
+                }
+                for ticker in tickers.tickers
+                if hasattr(ticker, 'info') and ticker.info
+            ]
+        
+        return self._execute_with_error_handling(_search)
