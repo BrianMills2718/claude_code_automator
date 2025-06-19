@@ -2,23 +2,84 @@
 
 **FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
-## CURRENT TASK: Turn Limit Configuration Fix
+## CURRENT TASK: Critical Architecture Fixes
 
-**ISSUE**: Planning phase fails with FORCE_SONNET=true due to 20-turn limit being too low
-**GOAL**: Fix turn limits to allow Sonnet to complete complex planning phases
-**STATUS**: 🔄 IN PROGRESS - Root cause identified, implementing fix
+**ISSUE**: System repeatedly fails due to fundamental architectural flaws discovered through adversarial testing
+**GOAL**: Fix broken evidence chain, test context, validation misalignment, and learning failures
+**STATUS**: 🚨 CRITICAL - Multiple architectural breaks preventing any successful runs
 
-### Turn Limit Issue - Root Cause & Solution
+### Critical Failures Found Through Adversarial Review
 
-**Root Cause**: Planning phase with Sonnet hits 20-turn limit when creating comprehensive files:
-- Each tool call (Write/Read/Edit/Bash) counts as separate turn
-- Complex planning requires 40-50 operations: create files, test, fix linting, iterate
-- 43 tool calls in 109 seconds = highly productive work, just needs more turns
+#### 1. 🔴 **BROKEN EVIDENCE CHAIN**
+**Problem**: System expects evidence files in `.cc_automator/phase_outputs/` but NOTHING creates these files
+- `_save_milestone_evidence()` looks for files that don't exist
+- Phases claim success without creating required evidence
+- **Violates core anti-cheating philosophy**
 
-**Solution Strategy**:
-1. **Increase planning phase turn limit to 50** for comprehensive file operations
-2. **Differentiate limits by phase type**: mechanical vs complex phases
-3. **Preserve cost optimization**: Sonnet for planning saves 90% vs Opus
+**Fix Required**:
+- Make phases explicitly create evidence files where validation expects them
+- Add evidence file creation to phase prompts
+- Validate evidence creation during phase execution
+
+#### 2. 🔴 **TEST PHASE GETS ZERO CONTEXT**
+**Problem**: Test phase has no idea what was implemented
+```python
+"test": {
+    "needs_previous_output": False,  # FATAL BUG - test phase blind
+}
+```
+- Has to reverse-engineer from source code
+- Creates wrong tests → validation fails → infinite retry loop
+- No implementation context passed between phases
+
+**Fix Required**:
+- Set `needs_previous_output: True` for test phase
+- Pass list of implemented functions/classes to test phase
+- Include implementation details in test phase prompt
+
+#### 3. 🔴 **VALIDATION-CREATION MISALIGNMENT**
+**Problem**: Prompts say one thing, validation expects another
+- Prompts: "create tests"
+- Validation: expects specific files in specific locations
+- Agent does work but puts files in wrong place
+- Work gets thrown away, retry starts from scratch
+
+**Fix Required**:
+- Make prompts explicit about required file locations
+- Align validation expectations with prompt instructions
+- Add file location guidance to all phase prompts
+
+#### 4. 🔴 **NO LEARNING FROM FAILURES**
+**Problem**: Retries get generic feedback without specifics
+- Test fails → "tests are failing" (no details)
+- No pytest error output passed to retry
+- Makes same mistakes repeatedly
+- Can't improve between attempts
+
+**Fix Required**:
+- Capture specific error output (pytest errors, mypy output, etc.)
+- Pass detailed error context to retry attempts
+- Add memory of previous attempts to avoid repetition
+
+#### 5. 🔴 **REMAINING TURN LIMIT ISSUES**
+**Problem**: Multiple phases still have insufficient turn limits
+- Validate phase: 25 turns (failing on complex validation)
+- Research phase: 20 turns (too low for WebSearch operations)
+- No dynamic adjustment when hitting limits productively
+
+**Fix Required**:
+- Increase validate phase to 50 turns
+- Increase research phase to 30+ turns when using WebSearch
+- Add dynamic turn limit extension for productive work
+
+### Previous Completed Fixes
+
+#### ✅ Turn Limit Fix for Planning (COMPLETED)
+- Increased planning phase from 20 to 50 turns
+- Added Bash tools to planning phase
+- Sonnet can now complete comprehensive planning
+
+#### ✅ SDK Cost Parsing Bug (RESOLVED)
 
 ### SDK Cost Parsing Bug - Root Cause & Solution
 
