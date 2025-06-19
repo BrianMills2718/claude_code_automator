@@ -107,6 +107,185 @@ tools/
 - ✅ **Utilities**: Add to appropriate `tools/` subdirectory
 - ❌ **Never**: Create files in root directory (except essential config)
 
+## 📋 Detailed File Creation & Reference Rules
+
+### 🎯 **FOR CLAUDE AGENTS: Follow These Rules Exactly**
+
+#### **1. When Creating New Files**
+
+**✅ Core System Components** (Add to `src/`)
+```python
+# NEW FILE: src/new_component.py
+from .existing_component import ExistingClass
+from .phase_orchestrator import Phase
+
+class NewComponent:
+    def __init__(self):
+        # Use relative imports within src/
+        pass
+```
+
+**✅ Test Files** (Add to appropriate `tests/` subdirectory)
+```python
+# NEW FILE: tests/unit/test_new_component.py
+import pytest
+from src.new_component import NewComponent
+
+def test_new_component():
+    pass
+```
+
+**✅ Documentation Files** (Add to `docs/`)
+```markdown
+<!-- NEW FILE: docs/implementation/new_feature_guide.md -->
+# New Feature Implementation Guide
+...
+```
+
+**✅ Debug/Analysis Tools** (Add to `tools/`)
+```python
+# NEW FILE: tools/debug/debug_new_issue.py
+from pathlib import Path
+import sys
+sys.path.append(str(Path(__file__).parent.parent))
+from src.component import Component
+```
+
+#### **2. When Referencing Existing Files**
+
+**✅ Use Relative Paths from Project Root**
+- ✅ `src/orchestrator.py` 
+- ✅ `tests/unit/test_component.py`
+- ✅ `docs/implementation/guide.md`
+- ❌ `/home/brian/cc_automator4/src/orchestrator.py` (absolute paths)
+
+**✅ Include Line Numbers for Debugging**
+- ✅ `src/phase_orchestrator.py:156` (specific function)
+- ✅ `src/orchestrator.py:635-642` (code block)
+
+#### **3. Import Statement Rules**
+
+**Within `src/` directory - USE RELATIVE IMPORTS:**
+```python
+# ✅ CORRECT: Relative imports within src/
+from .phase_orchestrator import PhaseOrchestrator
+from .session_manager import SessionManager
+from .progress_tracker import ProgressTracker
+
+# ❌ WRONG: Absolute imports within src/
+from phase_orchestrator import PhaseOrchestrator
+from session_manager import SessionManager
+```
+
+**From outside `src/` directory - USE MODULE IMPORTS:**
+```python
+# ✅ CORRECT: From cli.py or tests
+from src.orchestrator import CCAutomatorOrchestrator
+from src.phase_orchestrator import Phase
+
+# ❌ WRONG: Direct imports
+from orchestrator import CCAutomatorOrchestrator
+```
+
+#### **4. File Organization Decision Tree**
+
+**🤔 Where should I put this file?**
+
+```
+Is it core system logic?
+├─ YES → src/
+│   ├─ Main orchestration? → src/orchestrator.py or src/phase_orchestrator.py
+│   ├─ Data management? → src/session_manager.py, src/progress_tracker.py
+│   └─ Utilities? → src/[utility_name].py
+│
+├─ Is it a test?
+│   ├─ Tests one component? → tests/unit/
+│   ├─ Tests interaction between components? → tests/integration/
+│   ├─ Tests SDK functionality? → tests/sdk/
+│   └─ End-to-end scenario? → tests/scenarios/
+│
+├─ Is it documentation?
+│   ├─ Technical specification? → docs/specifications/
+│   ├─ Implementation guide? → docs/implementation/
+│   └─ Troubleshooting guide? → docs/troubleshooting/
+│
+└─ Is it a utility or tool?
+    ├─ Setup/installation? → tools/setup/
+    ├─ Debugging tool? → tools/debug/
+    └─ Analysis tool? → tools/analysis/
+```
+
+#### **5. File Naming Conventions**
+
+**✅ Python Files:**
+- `snake_case.py` for all Python files
+- Descriptive names: `phase_orchestrator.py` not `orchestrator2.py`
+- Test files: `test_[component_name].py`
+
+**✅ Documentation Files:**
+- `UPPERCASE.md` for specifications: `REQUIREMENTS.md`
+- `lowercase_with_underscores.md` for guides: `implementation_guide.md`
+
+**✅ Directories:**
+- `lowercase` for all directories
+- Plural when containing multiple items: `tests/`, `docs/`, `tools/`
+
+#### **6. Evidence File Creation (Critical for Anti-Cheating)**
+
+**When implementing phases, ALWAYS create evidence files:**
+
+```python
+# ✅ CORRECT: Create evidence in milestone directory
+milestone_dir = Path(".cc_automator/milestones/milestone_1")
+evidence_file = milestone_dir / "research.md"
+evidence_file.write_text("# Research Evidence\n\n...")
+
+# ✅ CORRECT: Reference evidence files
+evidence_path = "milestone_1/research.md"  # Relative to .cc_automator/milestones/
+```
+
+#### **7. Common Anti-Patterns to Avoid**
+
+```python
+# ❌ WRONG: Creating files in root directory
+with open("temp_debug.py", "w") as f:
+    f.write("...")
+
+# ✅ CORRECT: Put debug files in tools/debug/
+with open("tools/debug/temp_debug.py", "w") as f:
+    f.write("...")
+
+# ❌ WRONG: Hardcoded absolute paths
+import sys
+sys.path.append("/home/brian/cc_automator4/src")
+
+# ✅ CORRECT: Relative imports or module imports
+from src.component import Component
+
+# ❌ WRONG: Vague file references in documentation
+"Update the orchestrator file"
+
+# ✅ CORRECT: Specific file references  
+"Update `src/orchestrator.py:156-162`"
+```
+
+### 🎯 **Quick Reference for File Operations**
+
+**Creating Files:**
+- Core logic → `src/[name].py` with relative imports
+- Tests → `tests/[category]/test_[name].py`
+- Docs → `docs/[category]/[name].md`
+- Tools → `tools/[category]/[name].py`
+
+**Referencing Files:**
+- Always use relative paths from project root
+- Include line numbers for debugging: `:156` or `:156-162`
+- Use consistent path separators: `/` not `\`
+
+**Importing Code:**
+- Within src/: Use relative imports (`.component`)
+- From outside src/: Use module imports (`src.component`)
+
 ## Core Philosophy
 
 **Purpose**: Prevent Claude from claiming task completion without concrete proof
