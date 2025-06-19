@@ -2,112 +2,44 @@
 
 **FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
-## CURRENT TASK: Critical Architecture Fixes
+## WORKING NOTES (REMOVE WHEN COMPLETE)
+<!-- Archive to: docs/implementation_strategies.md when done -->
 
-**ISSUE**: System repeatedly fails due to fundamental architectural flaws discovered through adversarial testing
-**GOAL**: Fix broken evidence chain, test context, validation misalignment, and learning failures
-**STATUS**: 🚨 CRITICAL - Multiple architectural breaks preventing any successful runs
+### CURRENT PRIORITY: Fix SDK TaskGroup Errors ✅ ROOT CAUSE IDENTIFIED
+**GOAL**: Make SDK work consistently without CLI fallbacks
+**STRATEGY**: Fix async cleanup race conditions in Claude Code SDK
+**STATUS**: 🔍 DIAGNOSED - Root cause in SDK subprocess transport layer
 
-### Critical Failures Found Through Adversarial Review
+**Root Cause Identified**: TaskGroup errors are async cleanup race conditions in:
+- **File**: `/lib/python3.10/site-packages/claude_code_sdk/_internal/transport/subprocess_cli.py`
+- **Issue**: `tg.cancel_scope.cancel()` called while `read_stderr` task still running
+- **Impact**: Work completes successfully, but cleanup fails with "unhandled errors"
 
-#### 1. 🔴 **BROKEN EVIDENCE CHAIN**
-**Problem**: System expects evidence files in `.cc_automator/phase_outputs/` but NOTHING creates these files
-- `_save_milestone_evidence()` looks for files that don't exist
-- Phases claim success without creating required evidence
-- **Violates core anti-cheating philosophy**
+**Key File Locations**:
+- **Main orchestrator**: `/home/brian/cc_automator4/orchestrator.py:635`
+- **Phase execution**: `/home/brian/cc_automator4/phase_orchestrator.py:156-188`  
+- **SDK wrapper**: `/home/brian/cc_automator4/claude_code_sdk_fixed_v2.py`
+- **Error handling**: `/home/brian/cc_automator4/phase_orchestrator.py:799-816`
 
-**Fix Required**:
-- Make phases explicitly create evidence files where validation expects them
-- Add evidence file creation to phase prompts
-- Validate evidence creation during phase execution
+**Evidence**:
+- ✅ No resource leaks (memory +0.8MB only, no file/thread leaks)
+- ✅ 100% work completion rate (even "failed" calls complete successfully)
+- ❌ 20% TaskGroup cleanup errors during normal operation
+- ❌ CLI fallback masks issue and loses SDK features
 
-#### 2. 🔴 **TEST PHASE GETS ZERO CONTEXT**
-**Problem**: Test phase has no idea what was implemented
-```python
-"test": {
-    "needs_previous_output": False,  # FATAL BUG - test phase blind
-}
-```
-- Has to reverse-engineer from source code
-- Creates wrong tests → validation fails → infinite retry loop
-- No implementation context passed between phases
+**Fix Strategy**:
+1. **Improve error classification** - Distinguish cleanup errors from real failures
+2. **Fix SDK TaskGroup cleanup** - Remove forced cancellation in finally block
+3. **Add timeout handling** - For long-running WebSearch operations
+4. **Keep CLI fallback minimal** - Only for actual SDK failures, not cleanup noise
 
-**Fix Required**:
-- Set `needs_previous_output: True` for test phase
-- Pass list of implemented functions/classes to test phase
-- Include implementation details in test phase prompt
+<!-- Remove this entire section when SDK issues are resolved -->
 
-#### 3. 🔴 **VALIDATION-CREATION MISALIGNMENT**
-**Problem**: Prompts say one thing, validation expects another
-- Prompts: "create tests"
-- Validation: expects specific files in specific locations
-- Agent does work but puts files in wrong place
-- Work gets thrown away, retry starts from scratch
+## Core Philosophy
 
-**Fix Required**:
-- Make prompts explicit about required file locations
-- Align validation expectations with prompt instructions
-- Add file location guidance to all phase prompts
-
-#### 4. 🔴 **NO LEARNING FROM FAILURES**
-**Problem**: Retries get generic feedback without specifics
-- Test fails → "tests are failing" (no details)
-- No pytest error output passed to retry
-- Makes same mistakes repeatedly
-- Can't improve between attempts
-
-**Fix Required**:
-- Capture specific error output (pytest errors, mypy output, etc.)
-- Pass detailed error context to retry attempts
-- Add memory of previous attempts to avoid repetition
-
-#### 5. 🔴 **REMAINING TURN LIMIT ISSUES**
-**Problem**: Multiple phases still have insufficient turn limits
-- Validate phase: 25 turns (failing on complex validation)
-- Research phase: 20 turns (too low for WebSearch operations)
-- No dynamic adjustment when hitting limits productively
-
-**Fix Required**:
-- Increase validate phase to 50 turns
-- Increase research phase to 30+ turns when using WebSearch
-- Add dynamic turn limit extension for productive work
-
-### Previous Completed Fixes
-
-#### ✅ Turn Limit Fix for Planning (COMPLETED)
-- Increased planning phase from 20 to 50 turns
-- Added Bash tools to planning phase
-- Sonnet can now complete comprehensive planning
-
-#### ✅ SDK Cost Parsing Bug (RESOLVED)
-
-### SDK Cost Parsing Bug - Root Cause & Solution
-
-**Root Cause**: The Claude Code SDK v0.1.2 has a bug in `_internal/client.py` line 89 where it expects `data["cost_usd"]` but the CLI actually returns `data["total_cost_usd"]`.
-
-**Solution Implemented**: Created a monkey-patch wrapper (`claude_code_sdk_fixed.py`) that:
-1. Intercepts the SDK's `_parse_message` method
-2. Handles the KeyError gracefully
-3. Maps fields correctly: `total_cost_usd` → `cost_usd`
-
-**Integration**: `phase_orchestrator.py` now automatically uses the fixed wrapper when available:
-```python
-try:
-    from claude_code_sdk_fixed import query, ClaudeCodeOptions, Message
-    print("✅ Using fixed SDK wrapper (cost parsing bug patched)")
-except ImportError:
-    from claude_code_sdk import query, ClaudeCodeOptions, Message
-```
-
-**Benefits of SDK (Now Working)**:
-- ✅ Streaming feedback during execution
-- ✅ Rich message types and metadata
-- ✅ Better progress tracking
-- ✅ Cost tracking per phase
-- ✅ Session management
-- ✅ MCP server integration
-
-**Recommendation**: Continue using SDK with the wrapper fix for all benefits above
+**Purpose**: Prevent Claude from claiming task completion without concrete proof
+**Method**: Evidence-based validation with independent verification  
+**Strategy**: Optimize for speed (parallel) and cost (model selection) while maintaining quality
 
 ## THE FUNDAMENTAL PURPOSE
 
@@ -139,7 +71,64 @@ research → planning → implement → lint → typecheck → test → integrat
 4. Handle errors gracefully with evidence
 5. **NEVER be marked complete without concrete proof**
 
-### Evidence-Based Validation Philosophy
+## Phase-Specific Requirements
+
+### Research Phase
+- **MUST use WebSearch** for current information, API docs, best practices
+- **MUST read existing codebase** to understand current state
+- Output: `milestone_N/research.md` (>100 chars)
+
+### Planning Phase  
+- **MUST read existing codebase** before planning
+- **MUST reference research findings** from previous phase
+- Output: `milestone_N/plan.md` (>50 chars)
+
+### Implementation Phase
+- **Full tool access** - use whatever tools needed
+- Output: `main.py` OR `src/*.py` files
+
+### Lint Phase
+- **MUST achieve zero F-errors**: `flake8 --select=F` returns 0
+- Use parallel file processing for speed
+
+### Typecheck Phase
+- **MUST pass strict typing**: `mypy --strict` returns clean
+- Use parallel file processing for speed
+
+### Test Phase
+- **MUST pass unit tests**: `pytest tests/unit` succeeds
+- Generate specific error feedback for retries
+
+### Integration Phase
+- **MUST pass integration tests**: `pytest tests/integration` succeeds
+
+### E2E Phase
+- **MUST create evidence log**: `milestone_N/e2e_evidence.log`
+- **MUST test main.py execution** with interactive program detection
+
+### Commit Phase
+- **MUST create git commit** with proper message format
+
+## Tool Usage Philosophy
+
+- **No artificial tool restrictions per phase** - use what's needed
+- Phase-specific requirements above are minimums, not maximums
+- Leverage Claude's intelligence for tool selection
+- **Full tool access** unless specifically constrained
+
+## Execution Strategy
+
+- **Always use SDK** - Streaming, cost tracking, MCP integration
+- **DEBUGGING MODE**: Disable CLI fallback to surface SDK issues
+- CLI fallback = SDK failure (should be eliminated, not masked)
+- **Use parallel processing** for lint/typecheck phases by default
+
+### SDK Debug Priority
+- **Current State**: TaskGroup errors causing frequent CLI fallbacks
+- **Required Action**: Fix SDK wrapper to handle all error scenarios
+- **Temporary Strategy**: Fail hard instead of fallback to debug root causes
+
+## Evidence-Based Validation Philosophy
 
 **NEVER TRUST AGENT CLAIMS** - Always verify with independent validation:
 
@@ -159,25 +148,48 @@ def _validate_e2e_phase():
         return main_py_runs_without_crash()  # THIS IS CHEATING!
 ```
 
-### Required Output Files by Phase
+## Quick Reference
 
-1. **research**: `milestone_N/research.md` (>100 chars)
-2. **planning**: `milestone_N/plan.md` (>50 chars)  
-3. **implement**: `main.py` OR `src/*.py` files
-4. **lint**: Zero F-errors from `flake8 --select=F`
-5. **typecheck**: Clean output from `mypy --strict`
-6. **test**: `pytest tests/unit` passes
-7. **integration**: `pytest tests/integration` passes
-8. **e2e**: `milestone_N/e2e_evidence.log` AND `python main.py` succeeds
-9. **commit**: Git commit created
+### Phase Outputs Required
+- **research**: `milestone_N/research.md` (>100 chars)
+- **planning**: `milestone_N/plan.md` (>50 chars)  
+- **implement**: `main.py` OR `src/*.py` files
+- **lint**: Zero F-errors from `flake8 --select=F`
+- **typecheck**: Clean output from `mypy --strict`
+- **test**: `pytest tests/unit` passes
+- **integration**: `pytest tests/integration` passes
+- **e2e**: `milestone_N/e2e_evidence.log` AND `python main.py` succeeds
+- **commit**: Git commit created
+
+### Common Validation Commands
+- **Lint**: `flake8 --select=F`
+- **Typecheck**: `mypy --strict`
+- **Unit tests**: `pytest tests/unit`
+- **Integration tests**: `pytest tests/integration`
+- **E2E test**: `python main.py` (with input handling)
+
+## Common Error Patterns
+
+### "TaskGroup" SDK Errors
+- **Symptom**: TaskGroup error with partial completion
+- **Current Issue**: Happening frequently, masking root problems
+- **Debug Action**: Disable CLI fallback, capture full error context
+- **Root Cause**: SDK wrapper incomplete - needs comprehensive TaskGroup handling
+- **Goal**: Fix SDK wrapper to eliminate TaskGroup errors entirely
+
+### Interactive Program Hangs
+- **Symptom**: E2E phase hangs on `input()` calls
+- **Diagnosis**: Detect interactive programs with content analysis
+- **Action**: Use generalist exit patterns (`q\n`, `exit\n`, `0\n`, etc.)
+
+### Turn Limit Issues
+- **Symptom**: Phase fails due to insufficient turns
+- **Solution**: Research=30, Planning=50, Validate=50 turns minimum
 
 ## Critical Implementation Patterns
 
 ### 1. Interactive Program Detection (E2E Phase)
 
-**PROBLEM**: Interactive programs hang during e2e validation without input.
-
-**GENERALIST SOLUTION**:
 ```python
 def detect_interactive_program(file_path: Path) -> bool:
     """Detect if a Python program requires user input."""
@@ -194,101 +206,9 @@ def get_common_exit_inputs() -> List[str]:
         "quit\n",       # Quit command
         "bye\n",        # Goodbye
     ]
-
-def test_interactive_program(file_path: Path, working_dir: Path) -> bool:
-    """Test interactive program with multiple input patterns."""
-    if not detect_interactive_program(file_path):
-        # Non-interactive, run directly
-        result = subprocess.run(["python", file_path.name], 
-                              cwd=working_dir, timeout=10)
-        return result.returncode == 0
-    
-    # Try different exit patterns
-    for test_input in get_common_exit_inputs():
-        try:
-            result = subprocess.run(
-                ["python", file_path.name],
-                input=test_input,
-                capture_output=True,
-                text=True,
-                cwd=working_dir,
-                timeout=10
-            )
-            if result.returncode == 0:
-                return True
-        except subprocess.TimeoutExpired:
-            continue  # Try next pattern
-    
-    return False  # No exit pattern worked
 ```
 
-**DO NOT** hardcode program-specific input sequences. Always use generalist patterns.
-
-### 2. SDK Bug Handling
-
-**KNOWN ISSUE**: TaskGroup errors with "error_during_execution" and "is_error": false
-
-**SOLUTION**: Check if work was actually completed despite SDK errors:
-```python
-if "TaskGroup" in str(error) and phase.status == PhaseStatus.RUNNING:
-    # Check if outputs exist despite SDK crash
-    if self._validate_phase_outputs(phase):
-        phase.status = PhaseStatus.COMPLETED
-        return success
-    else:
-        # Fall back to CLI execution
-        return self._execute_cli_fallback(phase)
-```
-
-### 3. Model Selection for Cost Optimization
-
-**MECHANICAL PHASES** (use Sonnet - 90% cost savings):
-- lint, typecheck
-
-**COMPLEX PHASES** (use Opus - better reasoning):  
-- research, planning, implement, test, integration, e2e, validate, commit
-
-```python
-def _select_model_for_phase(phase_name: str) -> Optional[str]:
-    # Check environment overrides first
-    if os.environ.get('FORCE_SONNET') == 'true':
-        return "claude-3-5-sonnet-20241022"
-    
-    # Default logic
-    if phase_name in ["lint", "typecheck"]:
-        return "claude-3-5-sonnet-20241022"  # Cost-effective
-    return None  # Use default (Opus)
-```
-
-### 6. Turn Limit Configuration by Phase Type
-
-**PROBLEM**: Default 20-turn limit too low for file-intensive phases like planning.
-
-**SOLUTION**: Differentiate turn limits based on phase complexity:
-
-```python
-def get_turn_limit_for_phase(phase_name: str) -> int:
-    """Get appropriate turn limit based on phase complexity."""
-    # High file operation phases need more turns
-    high_turn_phases = ["planning", "implement", "integration"]
-    
-    if phase_name in high_turn_phases:
-        return 50  # Allow comprehensive file creation/testing
-    elif phase_name in ["lint", "typecheck"]:
-        return 30  # Moderate - file fixes but less creation
-    else:
-        return 20  # Standard for simple phases
-```
-
-**RATIONALE**:
-- Planning: Creates plan.md + implementation files + tests + setup = ~40-50 operations
-- Implement: Creates main code + modules + fixes = ~30-40 operations  
-- Lint/Typecheck: Fixes existing files = ~20-30 operations
-- Research/E2E: Primarily analysis = ~15-20 operations
-
-### 4. File Parallel Execution (Lint/Typecheck)
-
-**PRINCIPLE**: Process multiple files concurrently for 11x speed improvement.
+### 2. File Parallel Execution (Lint/Typecheck)
 
 ```python
 # ✅ CORRECT: True parallel execution
@@ -300,153 +220,20 @@ with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
     
     for future in as_completed(future_to_file):
         result = future.result()
-
-# ❌ WRONG: Sequential processing
-for file_path, errors in errors_by_file.items():
-    self.fix_file_errors(file_path, errors)
 ```
 
-### 5. Iteration Until Success
-
-**PRINCIPLE**: Don't give up after one attempt. Iterate until clean or max attempts.
+### 3. Model Selection for Cost Optimization
 
 ```python
-max_iterations = 5
-iteration = 0
-
-while iteration < max_iterations:
-    iteration += 1
+def _select_model_for_phase(phase_name: str) -> Optional[str]:
+    # Check environment overrides first
+    if os.environ.get('FORCE_SONNET') == 'true':
+        return "claude-3-5-sonnet-20241022"
     
-    # Run validation
-    errors = self.find_errors()
-    if not errors:
-        return success  # Clean!
-    
-    # Fix errors in parallel
-    self.fix_errors_parallel(errors)
-    
-    if iteration == max_iterations:
-        return failure  # Give up
-```
-
-## Testing Strategy
-
-### Unit Tests
-- Test individual functions/classes
-- Mock external dependencies 
-- Focus on logic correctness
-
-### Integration Tests  
-- Test component interactions
-- Minimal mocking
-- Test file I/O, subprocess calls
-
-### E2E Tests
-- NO mocking whatsoever
-- Test via main.py entry point
-- Must work like real user interaction
-
-## Error Recovery Patterns
-
-### 1. Graceful Degradation
-```python
-try:
-    result = advanced_operation()
-except AdvancedError:
-    result = fallback_operation()  # Simpler approach
-```
-
-### 2. Evidence Collection
-```python
-def attempt_phase(phase):
-    try:
-        execute_phase(phase)
-    except Exception as e:
-        # Always check if work was actually done
-        if outputs_exist(phase):
-            return success_with_warning(e)
-        else:
-            return failure(e)
-```
-
-### 3. Intelligent Validation Feedback & Retry
-```python
-def validate_with_feedback(phase):
-    if basic_validation_passes(phase):
-        return {"success": True}
-    
-    # Generate specific feedback about what failed
-    feedback = generate_specific_feedback(phase)
-    
-    # Attempt retry with targeted feedback
-    retry_success = retry_phase_with_feedback(phase, feedback)
-    
-    return {"success": retry_success, "feedback": feedback}
-
-def generate_specific_feedback(phase):
-    if phase.name == "e2e":
-        if missing_evidence_log():
-            return "Missing required evidence log file. You must create: milestone_N/e2e_evidence.log"
-        elif main_py_execution_failed():
-            return "Evidence log exists but main.py execution test failed"
-    # ... specific feedback for each phase type
-```
-
-### 4. The Feedback Loop That Was Missing
-The original system had a critical gap:
-1. ✅ Detect validation failure
-2. ❌ **NO specific feedback about what was wrong**
-3. ❌ **NO retry with targeted guidance**  
-4. ❌ **NO learning from the failure**
-
-The enhanced system now:
-1. ✅ Detect validation failure
-2. ✅ **Generate specific feedback about missing files/outputs**
-3. ✅ **Retry with targeted prompt explaining exactly what to fix**
-4. ✅ **Re-validate after retry to confirm fix**
-
-## Prompt Engineering Principles
-
-### 1. Be Specific About Outputs
-```python
-# ✅ GOOD: Specific file requirements
-prompt = f"""
-Create research.md in {milestone_dir}/research.md with:
-- Current codebase analysis (what exists)
-- Requirements for {milestone.description}  
-- Implementation approach
-- Testing strategy
-
-File must be >100 characters.
-"""
-
-# ❌ BAD: Vague requirements  
-prompt = "Research the requirements and create documentation."
-```
-
-### 2. Provide Context Flow
-```python
-prompt = f"""
-PREVIOUS PHASES:
-Research: {research_summary}
-Planning: {plan_summary}
-
-YOUR TASK: Implement {milestone.description}
-Focus on the plan above and research findings.
-"""
-```
-
-### 3. Include Validation Criteria
-```python
-prompt = f"""
-SUCCESS CRITERIA:
-- All flake8 F-errors fixed: `flake8 --select=F` returns 0
-- Files must be syntactically valid Python
-- Don't break existing functionality
-
-CURRENT ERRORS:
-{error_list}
-"""
+    # Default logic
+    if phase_name in ["lint", "typecheck"]:
+        return "claude-3-5-sonnet-20241022"  # Cost-effective
+    return None  # Use default (Opus)
 ```
 
 ## Common Anti-Patterns to Avoid
@@ -481,44 +268,6 @@ if "calculator" in project_name:
     test_input = "1\n10\n5\n8\n"
 ```
 
-### ❌ Complex Validation Logic
-```python
-# WRONG: Parsing complex outputs
-def validate_tests():
-    output = run_tests()
-    parsed = parse_pytest_output(output)  # Complex!
-    return analyze_test_results(parsed)   # Fragile!
-
-# RIGHT: Simple validation
-def validate_tests():
-    result = subprocess.run(["pytest", "tests/unit"])
-    return result.returncode == 0  # Simple!
-```
-
-### ❌ Disabling Features Due to Bugs
-```python
-# WRONG: Remove functionality
-def execute_phase(phase):
-    # Disable WebSearch due to SDK bug
-    phase.allowed_tools.remove("WebSearch")
-
-# RIGHT: Work around bugs  
-def execute_phase(phase):
-    try:
-        return execute_with_websearch(phase)
-    except SDKBug:
-        return execute_without_websearch(phase)
-```
-
-## Key Success Metrics
-
-1. **Validation Independence**: Each phase validated by external tools
-2. **Evidence Collection**: Concrete proof files created  
-3. **Cost Efficiency**: Sonnet for mechanical, Opus for complex
-4. **Speed Optimization**: Parallel execution where beneficial
-5. **Error Recovery**: Continue despite SDK bugs
-6. **Generalist Design**: Works across different project types
-
 ## Implementation Checklist
 
 When implementing any cc_automator4 feature:
@@ -531,5 +280,12 @@ When implementing any cc_automator4 feature:
 - [ ] Does it follow the nine-phase pipeline?
 - [ ] Does it support parallel execution where beneficial?
 - [ ] Does it iterate until success or max attempts?
+
+## Documentation Archive
+
+When implementation is complete, move working notes to:
+- `docs/implementation_strategies.md` - Problem-solving approaches used
+- `docs/debugging_history.md` - What was tried and failed
+- `docs/decision_rationale.md` - Why certain approaches were chosen
 
 **Remember**: The goal is a robust, generalist system that prevents Claude from taking shortcuts while optimizing for speed and cost.
