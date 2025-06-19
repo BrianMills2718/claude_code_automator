@@ -1,15 +1,18 @@
 import pytest
 import asyncio
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Generator
+from typing import List, Dict, Any, Generator, Optional, TYPE_CHECKING
 from unittest.mock import Mock
 
 from src.data_sources.base import MarketData
 
-try:
-    import pandas as pd  # type: ignore[import-untyped]
-except ImportError:
-    pd = None
+if TYPE_CHECKING:
+    import pandas as pd
+else:
+    try:
+        import pandas as pd
+    except ImportError:
+        pd = None  # type: ignore[assignment]
 
 
 @pytest.fixture

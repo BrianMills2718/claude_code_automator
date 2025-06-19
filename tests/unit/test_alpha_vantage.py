@@ -1,7 +1,7 @@
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from datetime import datetime, date, timedelta
-from typing import Any, Dict, List, Tuple
+from typing import Any, Tuple, Generator
 
 from src.data_sources.alpha_vantage import AlphaVantageAdapter, TimeSeriesConfig
 from src.data_sources.base import MarketData
@@ -45,7 +45,7 @@ class TestAlphaVantageAdapter:
     """Unit tests for AlphaVantageAdapter."""
 
     @pytest.fixture
-    def mock_settings(self) -> None:
+    def mock_settings(self) -> Generator[Any, None, None]:
         """Mock settings for testing."""
         with patch('src.data_sources.alpha_vantage.settings') as mock_settings:
             mock_settings.ALPHA_VANTAGE_API_KEY.get_secret_value.return_value = "test_api_key"

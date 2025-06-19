@@ -1,12 +1,10 @@
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 from typing import Any, List
 import pandas as pd
 
-from src.processing.pipeline import DataPipeline
 from src.storage.repository import DataRepository
-from src.data_sources.yahoo_finance import YahooFinanceAdapter
 from src.data_sources.base import MarketData
 from src.cli.commands import get_pipeline, analyze
 

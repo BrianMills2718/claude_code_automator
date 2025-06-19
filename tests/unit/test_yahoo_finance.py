@@ -20,7 +20,7 @@ class TestYahooFinanceAdapter:
     def mock_yfinance_data(self) -> Any:
         """Mock yfinance data."""
         try:
-            import pandas as pd  # type: ignore[import-untyped]
+            import pandas as pd
         except ImportError:
             pytest.skip("pandas not available")
         

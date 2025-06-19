@@ -187,7 +187,7 @@ class TestTimeSeriesRequest:
 
     def test_time_series_request_minimal(self) -> None:
         """Test minimal time series request."""
-        request = TimeSeriesRequest(symbol="AAPL")
+        request = TimeSeriesRequest(symbol="AAPL", start_date=None, end_date=None, interval=None, limit=None)
         
         assert request.symbol == "AAPL"
         assert request.start_date is None
@@ -202,7 +202,9 @@ class TestTimeSeriesRequest:
             TimeSeriesRequest(
                 symbol="AAPL",
                 start_date=datetime(2023, 1, 31),
-                end_date=datetime(2023, 1, 1)  # Before start date
+                end_date=datetime(2023, 1, 1),  # Before start date
+                interval=None,
+                limit=None
             )
         assert "end_date must be after start_date" in str(exc_info.value)
 
@@ -210,21 +212,21 @@ class TestTimeSeriesRequest:
         """Test interval validation."""
         # Zero interval should fail
         with pytest.raises(ValidationError):
-            TimeSeriesRequest(symbol="AAPL", interval=0)
+            TimeSeriesRequest(symbol="AAPL", start_date=None, end_date=None, interval=0, limit=None)
 
         # Large interval should fail
         with pytest.raises(ValidationError):
-            TimeSeriesRequest(symbol="AAPL", interval=61)
+            TimeSeriesRequest(symbol="AAPL", start_date=None, end_date=None, interval=61, limit=None)
 
     def test_time_series_request_limit_validation(self) -> None:
         """Test limit validation."""
         # Zero limit should fail
         with pytest.raises(ValidationError):
-            TimeSeriesRequest(symbol="AAPL", limit=0)
+            TimeSeriesRequest(symbol="AAPL", start_date=None, end_date=None, interval=None, limit=0)
 
         # Negative limit should fail
         with pytest.raises(ValidationError):
-            TimeSeriesRequest(symbol="AAPL", limit=-1)
+            TimeSeriesRequest(symbol="AAPL", start_date=None, end_date=None, interval=None, limit=-1)
 
 
 class TestSearchRequest:
@@ -239,7 +241,7 @@ class TestSearchRequest:
 
     def test_search_request_minimal(self) -> None:
         """Test minimal search request."""
-        request = SearchRequest(query="AAPL")
+        request = SearchRequest(query="AAPL", limit=None)
         
         assert request.query == "AAPL"
         assert request.limit is None
@@ -248,7 +250,7 @@ class TestSearchRequest:
         """Test query validation."""
         # Empty query should fail
         with pytest.raises(ValidationError):
-            SearchRequest(query="")
+            SearchRequest(query="", limit=None)
 
     def test_search_request_limit_validation(self) -> None:
         """Test limit validation."""

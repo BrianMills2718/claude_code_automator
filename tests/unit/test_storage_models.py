@@ -1,4 +1,3 @@
-import pytest
 from datetime import datetime
 from unittest.mock import patch
 
@@ -111,17 +110,6 @@ class TestMarketDataModel:
         with patch('src.storage.models.datetime') as mock_datetime:
             mock_now = datetime(2023, 1, 1, 12, 0, 0)
             mock_datetime.utcnow.return_value = mock_now
-            
-            model = MarketDataModel(
-                symbol="AAPL",
-                timestamp=datetime(2023, 1, 1, 9, 30),
-                open=100.0,
-                high=105.0,
-                low=99.0,
-                close=102.0,
-                volume=1000000,
-                source="yahoo_finance"
-            )
             
             # created_at should use the default function
             columns = MarketDataModel.__table__.columns

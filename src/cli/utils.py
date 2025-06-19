@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from rich.console import Console
 from rich.table import Table
 

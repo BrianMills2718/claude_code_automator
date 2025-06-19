@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import typer
 from rich.console import Console
 from rich.table import Table
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 
 from .. import settings
 from ..data_sources.base import DataSourceBase, MarketData

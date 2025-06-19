@@ -1,4 +1,4 @@
-import pandas as pd  # type: ignore
+import pandas as pd
 import numpy as np
 
 def clean_market_data(df: pd.DataFrame) -> pd.DataFrame:
@@ -16,7 +16,7 @@ def clean_market_data(df: pd.DataFrame) -> pd.DataFrame:
     )
     
     # Forward fill missing values (max 2 periods)
-    df = df.fillna(method='ffill', limit=2)
+    df = df.ffill(limit=2)
     
     # Drop any remaining rows with missing values
     df = df.dropna()

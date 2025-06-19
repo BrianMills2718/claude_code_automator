@@ -51,8 +51,9 @@ class TestMarketData:
     def test_market_data_validation(self) -> None:
         """Test MarketData field validation."""
         # All fields are required
-        with pytest.raises(ValueError):
-            MarketData(
+        from pydantic import ValidationError
+        with pytest.raises(ValidationError):
+            MarketData(  # type: ignore[call-arg]
                 symbol="AAPL",
                 # Missing required fields
             )

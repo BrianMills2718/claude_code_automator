@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional
 from datetime import datetime
 
-import pandas as pd  # type: ignore
+import pandas as pd
 from pydantic import ValidationError
 
 from ..data_sources.base import DataSourceBase, MarketData

@@ -1,6 +1,6 @@
 import pytest
 from datetime import datetime
-import pandas as pd  # type: ignore[import-untyped]
+import pandas as pd
 from unittest.mock import patch
 
 from src.cli.utils import (

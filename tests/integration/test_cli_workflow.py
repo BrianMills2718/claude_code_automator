@@ -2,11 +2,8 @@ import pytest
 import subprocess
 import sys
 from pathlib import Path
-from unittest.mock import patch, Mock, AsyncMock
+from unittest.mock import patch, Mock
 from datetime import datetime, timedelta
-import pandas as pd
-
-from src.data_sources.base import MarketData
 
 
 class TestCLIWorkflowIntegration:
@@ -33,10 +30,10 @@ class TestCLIWorkflowIntegration:
     @patch('src.storage.repository.RedisCache')
     async def test_fetch_command_integration(
         self, 
-        mock_redis, 
-        mock_create_engine, 
-        mock_ticker,
-        mock_yahoo_finance_data
+        mock_redis: Mock, 
+        mock_create_engine: Mock, 
+        mock_ticker: Mock,
+        mock_yahoo_finance_data: Mock
     ) -> None:
         """Test fetch command integration with real CLI invocation."""
         # Setup mocks
@@ -50,7 +47,6 @@ class TestCLIWorkflowIntegration:
         mock_session = Mock()
         mock_session.__enter__ = Mock(return_value=mock_session)
         mock_session.__exit__ = Mock(return_value=None)
-        mock_session_maker = Mock(return_value=mock_session)
         
         mock_cache = Mock()
         mock_redis.return_value = mock_cache
@@ -73,8 +69,8 @@ class TestCLIWorkflowIntegration:
     @patch('src.storage.repository.RedisCache')
     async def test_analyze_command_with_mock_data(
         self, 
-        mock_redis, 
-        mock_create_engine
+        mock_redis: Mock, 
+        mock_create_engine: Mock
     ) -> None:
         """Test analyze command with mocked repository data."""
         # Setup mocks
@@ -106,7 +102,6 @@ class TestCLIWorkflowIntegration:
         mock_execute_result.scalars.return_value = sample_data
         mock_session.execute.return_value = mock_execute_result
         
-        mock_session_maker = Mock(return_value=mock_session)
         
         mock_cache = Mock()
         mock_cache.get_market_data = Mock(return_value=None)
