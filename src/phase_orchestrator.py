@@ -17,6 +17,7 @@ from enum import Enum
 import asyncio
 import anyio
 import psutil  # For resource monitoring
+from .memory_manager import create_memory_manager
 # Use V4 SDK wrapper with ACTUAL TaskGroup fixes (not masking)
 try:
     from .claude_code_sdk_fixed_v4 import query_v4_fixed as query_v3, ClaudeCodeOptions, get_v4_fixed_wrapper
@@ -147,6 +148,9 @@ class PhaseOrchestrator:
         self.resource_metrics = []
         self.stability_logs_dir = self.working_dir / ".cc_automator" / "stability_logs"
         
+        # Enhanced memory management
+        self.memory_manager = create_memory_manager(adaptive=True, enable_gc=True)
+        
         # Create directories
         self.checkpoints_dir.mkdir(parents=True, exist_ok=True)
         self.evidence_dir.mkdir(parents=True, exist_ok=True)
@@ -161,9 +165,6 @@ class PhaseOrchestrator:
         
     def execute_phase(self, phase: Phase) -> Dict[str, Any]:
         """Execute a single phase using Claude Code SDK or CLI"""
-        
-        # Record resource metrics at phase start
-        start_metrics = self.record_resource_metrics(phase.name, "start")
         
         # Print phase header (minimal by default)
         if hasattr(self, 'verbose') and self.verbose:
@@ -539,6 +540,9 @@ Write to it: PHASE_COMPLETE"""
     async def _execute_with_sdk(self, phase: Phase) -> Dict[str, Any]:
         """Execute phase using Claude Code SDK with full conversation preservation"""
         
+        # Record resource metrics at phase start (moved here to fix scope issue)
+        start_metrics = self.record_resource_metrics(phase.name, "start")
+        
         # Check if we should use sub-phases (disable by default to reduce TaskGroup errors)
         use_subphases = os.environ.get('USE_SUBPHASES', 'false').lower() == 'true'
         if use_subphases and phase.name in ['research', 'planning', 'implement']:
@@ -580,9 +584,11 @@ Write to it: PHASE_COMPLETE"""
             model=model  # Use Sonnet for lint/typecheck, default (Opus) for others
         )
         
-        # Track messages for conversation context (with memory limit)
+        # Track messages for conversation context (with adaptive memory management)
         messages: List[Message] = []
-        max_messages = 10000 if self.infinite_mode else 500  # Extend buffer in infinite mode
+        
+        # Record initial memory state
+        initial_memory = self.memory_manager.record_metrics(phase.name)
         
         # Always create log file for debugging
         log_dir = self.working_dir / ".cc_automator" / "logs"
@@ -611,9 +617,20 @@ Write to it: PHASE_COMPLETE"""
             async for message in query_func(*query_args):
                 messages.append(message)
                 
-                # Prevent memory leaks by limiting message history
-                if len(messages) > max_messages:
-                    messages = messages[-max_messages//2:]  # Keep last half
+                # Enhanced memory management with adaptive optimization
+                if len(messages) % 50 == 0:
+                    if self.memory_manager.should_trigger_cleanup():
+                        if self.verbose:
+                            current_memory = self.memory_manager.get_current_metrics()
+                            print(f"  🧠 Memory check: {current_memory.rss_mb:.1f} MB ({len(messages)} messages)")
+                        
+                        # Optimize messages in place to prevent memory growth
+                        optimized = self.memory_manager.optimize_message_history(messages, phase.name)
+                        if len(optimized) < len(messages):
+                            messages.clear()
+                            messages.extend(optimized)
+                            if self.verbose:
+                                print(f"  🧹 Optimized messages: {len(optimized)} kept")
                 
                 # For V3, WebSearch timing is handled internally, for legacy we need to track it
                 if not V3_SDK_AVAILABLE:
@@ -830,20 +847,36 @@ Write to it: PHASE_COMPLETE"""
                     if self.verbose:
                         print(f"  {direction} Memory change: {memory_delta:+.1f} MB")
             
-            # Save session with full message history for context preservation
+            # Enhanced memory management with adaptive optimization
+            cleaned_sessions, optimized_messages, gc_collected = self.memory_manager.smart_cleanup(
+                self.session_manager, messages, phase.name
+            )
+            
+            # Save session with optimized message history
             if hasattr(self, 'session_manager') and phase.session_id:
                 self.session_manager[phase.name] = {
                     "session_id": phase.session_id,
-                    "messages": messages[-50:],  # Only keep last 50 messages to prevent memory leaks
+                    "messages": optimized_messages,  # Memory-optimized messages
                     "sdk": True
                 }
+                
+            # Apply session cleanup if memory pressure detected
+            if self.memory_manager.should_trigger_cleanup():
+                self.session_manager = cleaned_sessions
+                if self.verbose and gc_collected > 0:
+                    print(f"  🧹 Memory cleanup: {gc_collected} objects collected")
             
             self._save_checkpoint(phase)
             self._save_milestone_evidence(phase)
             self._print_phase_summary(phase)
             
-            # Clean up messages to prevent memory leaks in infinite mode
+            # Final memory metrics and cleanup
+            final_memory = self.memory_manager.record_metrics(f"{phase.name}_end")
             messages.clear()
+            
+            # Save memory report if verbose mode or memory pressure
+            if self.verbose or self.memory_manager.is_memory_pressure():
+                self.memory_manager.save_memory_report(self.stability_logs_dir)
             
             # CRITICAL: Validate phase outputs before claiming success
             if phase.status == PhaseStatus.COMPLETED:

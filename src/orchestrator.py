@@ -28,6 +28,7 @@ from .output_filter import OutputFilter
 from .file_parallel_executor import FileParallelExecutor
 from .parallel_assessment_agent import ParallelAssessmentAgent
 from .progress_display import ProgressDisplay
+from .resume_state_validator import validate_project_for_resume, ValidationLevel
 from .dependency_analyzer import analyze_project_dependencies, DependencyAnalysis
 from .docker_orchestrator import DockerOrchestrator
 
@@ -209,6 +210,24 @@ class CCAutomatorOrchestrator:
             self.progress_tracker.add_milestone(f"Milestone {milestone.number}", phase_names)
             
         if self.resume:
+            # ENHANCED: Validate project state before resuming
+            print("🔍 Validating project state for resume...")
+            can_resume, resume_report = self._validate_resume_state()
+            
+            if not can_resume:
+                print("❌ Resume validation failed!")
+                print("📋 Validation report saved to .cc_automator/resume_validation.md")
+                if self.verbose:
+                    print("\nKey issues found:")
+                    # Show critical errors from report
+                    lines = resume_report.split('\n')
+                    for line in lines:
+                        if '❌' in line:
+                            print(f"  {line}")
+                return False
+                
+            print("✅ Resume validation passed")
+            
             # Try to load existing progress
             if self.progress_tracker.load_progress():
                 print("✓ Loaded existing progress")
@@ -750,6 +769,23 @@ class CCAutomatorOrchestrator:
             json.dump(results, f, indent=2)
             
         print(f"✓ Results saved to: {results_file}")
+        
+    def _validate_resume_state(self) -> tuple[bool, str]:
+        """Validate project state for safe resume operations"""
+        # Determine validation level based on verbosity
+        validation_level = ValidationLevel.STRICT if self.verbose else ValidationLevel.STANDARD
+        
+        try:
+            can_resume, report = validate_project_for_resume(
+                self.project_dir, 
+                validation_level=validation_level,
+                save_report=True
+            )
+            return can_resume, report
+        except Exception as e:
+            # If validation itself fails, be conservative and don't resume
+            error_report = f"Resume validation failed with error: {e}\nRecommendation: Start fresh execution instead of resume."
+            return False, error_report
         
     def _format_duration(self, seconds: float) -> str:
         """Format duration in human-readable format"""
