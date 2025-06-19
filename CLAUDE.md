@@ -16,10 +16,10 @@
 - **Impact**: Work completes successfully, but cleanup fails with "unhandled errors"
 
 **Key File Locations**:
-- **Main orchestrator**: `/home/brian/cc_automator4/orchestrator.py:635`
-- **Phase execution**: `/home/brian/cc_automator4/phase_orchestrator.py:156-188`  
-- **SDK wrapper**: `/home/brian/cc_automator4/claude_code_sdk_fixed_v2.py`
-- **Error handling**: `/home/brian/cc_automator4/phase_orchestrator.py:799-816`
+- **Main orchestrator**: `src/orchestrator.py:635`
+- **Phase execution**: `src/phase_orchestrator.py:156-188`  
+- **SDK wrapper**: `src/claude_code_sdk_fixed_v2.py`
+- **Error handling**: `src/phase_orchestrator.py:799-816`
 
 **Evidence**:
 - ✅ No resource leaks (memory +0.8MB only, no file/thread leaks)
@@ -34,6 +34,78 @@
 4. **Keep CLI fallback minimal** - Only for actual SDK failures, not cleanup noise
 
 <!-- Remove this entire section when SDK issues are resolved -->
+
+## File Organization & Navigation
+
+**CC_AUTOMATOR4 uses a clean, organized directory structure:**
+
+### 📁 Root Directory (Essential Files Only)
+```
+cc_automator4/
+├── CLAUDE.md              # This file - main instructions
+├── README.md              # User documentation  
+├── cli.py                 # Main CLI entry point
+├── run.py                 # Legacy entry point
+├── requirements.txt       # Python dependencies
+└── example_projects/      # Test projects
+```
+
+### 📁 Core System (`src/`)
+```
+src/
+├── orchestrator.py            # Main orchestration logic
+├── phase_orchestrator.py      # Phase execution engine  
+├── claude_code_sdk_fixed_v2.py # SDK wrapper with bug fixes
+├── session_manager.py         # Session tracking
+├── progress_tracker.py        # Progress and cost tracking
+├── milestone_decomposer.py    # Milestone parsing
+├── phase_prompt_generator.py  # Dynamic prompt generation
+├── file_parallel_executor.py  # Parallel file processing
+├── preflight_validator.py     # Environment validation
+└── ...                        # Other core modules
+```
+
+### 📁 Tests (`tests/`)
+```
+tests/
+├── unit/          # Unit tests for individual components
+├── integration/   # Integration tests for phase interactions  
+├── sdk/          # SDK-specific tests and debugging
+└── scenarios/    # End-to-end test scenarios
+```
+
+### 📁 Documentation (`docs/`)
+```
+docs/
+├── specifications/    # Requirements and specifications
+├── implementation/    # Technical implementation guides
+└── troubleshooting/   # Debug guides and known issues
+```
+
+### 📁 Tools (`tools/`)
+```
+tools/
+├── setup/     # Installation and setup scripts
+├── debug/     # Debugging and diagnostic tools
+└── analysis/  # Analysis and research tools
+```
+
+### 🎯 Quick Navigation for Claude Agents
+
+**When debugging or implementing:**
+- **Main entry point**: `cli.py` 
+- **Core logic**: `src/orchestrator.py`
+- **Phase execution**: `src/phase_orchestrator.py`
+- **SDK issues**: `src/claude_code_sdk_fixed_v2.py`
+- **Tests**: `tests/` (organized by type)
+- **Documentation**: `docs/` (organized by purpose)
+
+**File Creation Guidelines:**
+- ✅ **Core system files**: Add to `src/` with relative imports
+- ✅ **Tests**: Add to appropriate `tests/` subdirectory
+- ✅ **Documentation**: Add to appropriate `docs/` subdirectory  
+- ✅ **Utilities**: Add to appropriate `tools/` subdirectory
+- ❌ **Never**: Create files in root directory (except essential config)
 
 ## Core Philosophy
 
