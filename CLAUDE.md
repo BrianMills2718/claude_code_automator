@@ -45,18 +45,19 @@
 - 🟡 **Phase 2**: Medium-risk enhancements (optional telemetry, limited config)
 - 🔴 **Never Implement**: Meta-agents, complex parallel execution, extensive configuration
 
-**CURRENT STATUS** (⚠️ STABILITY WORK REQUIRED):
-- ✅ V3 can complete complex projects (ML Portfolio test progressing)
-- 🚨 TaskGroup async cleanup failures create long-term stability risks
-- 🚨 Error masking prevents proper root cause diagnosis
-- 🔴 V3 hardening mandatory before V4 development begins
+**CURRENT STATUS** (⚠️ REAL WORLD FAILURES CONFIRMED):
+- ✅ V3 can complete complex projects (ML Portfolio test 70% complete, 2/4 milestones done)
+- 🚨 **REAL FAILURES CONFIRMED**: ML Portfolio test stuck 2+ hours in TaskGroup cleanup (Milestone 3, phase 9/11)
+- 🚨 **CONCRETE EVIDENCE**: Error masking hides real failures: `"Phase completed successfully (TaskGroup cleanup noise ignored)"`
+- 🚨 **RESOURCE LEAKS PROVEN**: Orphaned subprocess (PID 157253) running hours after "completion"
+- 🔴 Debugging impossible due to fabricated success messages masking real async failures
 
-**IMMEDIATE NEXT STEPS**:
-1. Monitor ML Portfolio test completion (currently Milestone 3/4)
-2. Analyze final test results for additional stability evidence
-3. Begin V3 TaskGroup issue resolution (replace masking with fixing)
-4. Implement V3 stability validation gates
-5. Only proceed with V4 after V3 stability proven
+**IMMEDIATE NEXT STEPS** (Real SDK Problem Diagnosis):
+1. 🔴 **Create minimal SDK test** that reproduces TaskGroup issues without masking
+2. 🔴 **Strip error masking** from V3 wrapper to see what's really failing  
+3. 🔴 **Fix actual async cleanup problems** instead of hiding them
+4. Monitor ML Portfolio test completion (currently stuck but 70% done - don't kill)
+5. Only proceed with V4 after real V3 SDK issues resolved
 
 <!-- Archive to: docs/v3_stability_work.md when V3 hardening complete -->
 
