@@ -6,7 +6,7 @@ from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.sql import select
 
-from .. import settings
+from ..config import settings
 from ..data_sources.base import MarketData
 from .models import Base, MarketDataModel
 from .cache import RedisCache, MarketDataKey, MarketDataConfig

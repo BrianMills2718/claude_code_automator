@@ -1,0 +1,12 @@
+{
+  "name": "validate",
+  "description": "Validate all implementations are real (no mocks)",
+  "status": "completed",
+  "session_id": "ec489c4f-d2c6-4ed1-92e6-f3329270eeea",
+  "cost_usd": 0.0,
+  "duration_ms": 0,
+  "error": null,
+  "start_time": "2025-06-19T11:44:51.081858",
+  "end_time": "2025-06-19T11:46:15.548303",
+  "think_mode": null
+}

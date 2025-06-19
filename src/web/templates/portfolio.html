@@ -1,0 +1,554 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Details - ML Portfolio Analyzer{% endblock %}
+
+{% block content %}
+<div class="portfolio-details">
+    
+    <!-- Portfolio Header -->
+    <section class="portfolio-header">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <div>
+                    <h1 id="portfolio-name">Loading Portfolio...</h1>
+                    <p id="portfolio-description" style="color: #6b7280;">Loading description...</p>
+                </div>
+                <div style="text-align: right;">
+                    <div id="portfolio-total-value" class="portfolio-value">$0.00</div>
+                    <div id="portfolio-daily-change" class="portfolio-change">+0.00%</div>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                <button class="btn" onclick="refreshPortfolio()">Refresh</button>
+                <button class="btn btn-secondary" onclick="analyzePortfolio()">Run Analysis</button>
+                <button class="btn btn-secondary" onclick="rebalancePortfolio()">Rebalance</button>
+                <button class="btn btn-secondary" onclick="exportPortfolio()">Export</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Portfolio Metrics -->
+    <section class="portfolio-metrics">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>Performance Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <label>Total Return</label>
+                        <span id="total-return">+12.5%</span>
+                    </div>
+                    <div class="metric">
+                        <label>YTD Return</label>
+                        <span id="ytd-return">+15.8%</span>
+                    </div>
+                    <div class="metric">
+                        <label>Sharpe Ratio</label>
+                        <span id="sharpe-ratio">1.42</span>
+                    </div>
+                    <div class="metric">
+                        <label>Max Drawdown</label>
+                        <span id="max-drawdown">-8.2%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Risk Metrics</h3>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <label>Beta</label>
+                        <span id="beta">1.15</span>
+                    </div>
+                    <div class="metric">
+                        <label>Volatility</label>
+                        <span id="volatility">28%</span>
+                    </div>
+                    <div class="metric">
+                        <label>VaR (95%)</label>
+                        <span id="var-95">-3.5%</span>
+                    </div>
+                    <div class="metric">
+                        <label>Alpha</label>
+                        <span id="alpha">2.3%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Holdings Table -->
+    <section class="holdings-section">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>Holdings</h3>
+                <button class="btn" onclick="addHolding()">Add Holding</button>
+            </div>
+            
+            <table class="data-table" id="holdings-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Shares</th>
+                        <th>Current Price</th>
+                        <th>Daily Change</th>
+                        <th>Market Value</th>
+                        <th>Weight</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="holdings-table-body">
+                    <!-- Holdings will be loaded here -->
+                    <tr>
+                        <td colspan="7" style="text-align: center; padding: 2rem;">
+                            <div class="loading-spinner"></div>
+                            Loading holdings...
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Charts Section -->
+    <section class="charts-section">
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>Asset Allocation</h3>
+                <div class="chart-container">
+                    <canvas id="allocation-chart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Performance History</h3>
+                <div class="chart-container">
+                    <div id="performance-chart-plotly"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>Sector Distribution</h3>
+                <div class="chart-container">
+                    <canvas id="sector-chart"></canvas>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Risk vs Return</h3>
+                <div class="chart-container">
+                    <div id="risk-return-chart"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Technical Analysis Section -->
+    <section class="analysis-section">
+        <div class="card">
+            <h3>Technical Analysis</h3>
+            <div id="analysis-results">
+                <p style="color: #6b7280; text-align: center; padding: 2rem;">
+                    Click "Run Analysis" to see technical indicators and signals
+                </p>
+            </div>
+        </div>
+    </section>
+
+</div>
+
+<!-- Add Holding Modal -->
+<div id="add-holding-modal" class="modal" style="display: none;">
+    <div class="modal-content card" style="max-width: 500px; margin: 2rem auto;">
+        <h3>Add New Holding</h3>
+        <form id="add-holding-form">
+            <div class="form-group">
+                <label for="holding-symbol">Symbol:</label>
+                <input type="text" id="holding-symbol" name="symbol" required 
+                       placeholder="e.g., AAPL" style="text-transform: uppercase;">
+            </div>
+            <div class="form-group">
+                <label for="holding-shares">Shares:</label>
+                <input type="number" id="holding-shares" name="shares" required 
+                       min="0.01" step="0.01" placeholder="100">
+            </div>
+            <div style="display: flex; gap: 1rem;">
+                <button type="submit" class="btn">Add Holding</button>
+                <button type="button" class="btn btn-secondary" onclick="hideAddHoldingModal()">
+                    Cancel
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Portfolio-specific JavaScript
+
+let currentPortfolioId = 'portfolio_1'; // Default portfolio
+
+// Load portfolio data on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    await loadPortfolioDetails();
+    initializeCharts();
+    setupWebSocket();
+});
+
+async function loadPortfolioDetails() {
+    try {
+        const response = await fetch(`/api/portfolio/${currentPortfolioId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            }
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to load portfolio');
+        }
+        
+        const portfolio = await response.json();
+        updatePortfolioDisplay(portfolio);
+        
+    } catch (error) {
+        console.error('Error loading portfolio:', error);
+        showAlert('Failed to load portfolio details', 'error');
+    }
+}
+
+function updatePortfolioDisplay(portfolio) {
+    // Update header
+    document.getElementById('portfolio-name').textContent = portfolio.name;
+    document.getElementById('portfolio-description').textContent = portfolio.description || 'No description';
+    document.getElementById('portfolio-total-value').textContent = `$${portfolio.total_value.toLocaleString()}`;
+    
+    const changeElement = document.getElementById('portfolio-daily-change');
+    changeElement.textContent = `${portfolio.performance.daily_change >= 0 ? '+' : ''}${portfolio.performance.daily_change.toFixed(2)}%`;
+    changeElement.className = `portfolio-change ${portfolio.performance.daily_change >= 0 ? 'positive' : 'negative'}`;
+    
+    // Update metrics
+    document.getElementById('total-return').textContent = `${portfolio.performance.total_return >= 0 ? '+' : ''}${portfolio.performance.total_return.toFixed(1)}%`;
+    document.getElementById('ytd-return').textContent = `${portfolio.performance.ytd_return >= 0 ? '+' : ''}${portfolio.performance.ytd_return.toFixed(1)}%`;
+    
+    // Update holdings table
+    updateHoldingsTable(portfolio.holdings, portfolio.total_value);
+}
+
+function updateHoldingsTable(holdings, totalValue) {
+    const tbody = document.getElementById('holdings-table-body');
+    if (!tbody) return;
+    
+    tbody.innerHTML = holdings.map(holding => {
+        const weight = ((holding.value / totalValue) * 100).toFixed(1);
+        return `
+            <tr>
+                <td><strong>${holding.symbol}</strong></td>
+                <td>${holding.shares}</td>
+                <td id="price-${holding.symbol}">$${(holding.value / holding.shares).toFixed(2)}</td>
+                <td id="change-${holding.symbol}" class="positive">+2.15</td>
+                <td>$${holding.value.toLocaleString()}</td>
+                <td>${weight}%</td>
+                <td>
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;"
+                            onclick="editHolding('${holding.symbol}')">Edit</button>
+                    <button class="btn btn-secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem; margin-left: 0.5rem;"
+                            onclick="removeHolding('${holding.symbol}')">Remove</button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function initializeCharts() {
+    // Asset Allocation Chart
+    const allocationCtx = document.getElementById('allocation-chart');
+    if (allocationCtx) {
+        new Chart(allocationCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['AAPL', 'GOOGL', 'MSFT', 'Other'],
+                datasets: [{
+                    data: [35, 25, 20, 20],
+                    backgroundColor: ['#667eea', '#764ba2', '#f093fb', '#f5576c']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    }
+    
+    // Sector Distribution Chart
+    const sectorCtx = document.getElementById('sector-chart');
+    if (sectorCtx) {
+        new Chart(sectorCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Technology', 'Healthcare', 'Financial', 'Consumer'],
+                datasets: [{
+                    label: 'Weight (%)',
+                    data: [45, 25, 20, 10],
+                    backgroundColor: '#667eea'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 50
+                    }
+                }
+            }
+        });
+    }
+    
+    // Performance History (Plotly)
+    const performanceDiv = document.getElementById('performance-chart-plotly');
+    if (performanceDiv) {
+        const trace = {
+            x: ['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
+            y: [100, 105, 102, 108, 112, 115],
+            type: 'scatter',
+            mode: 'lines+markers',
+            name: 'Portfolio Value',
+            line: { color: '#667eea' }
+        };
+        
+        const layout = {
+            title: '',
+            xaxis: { title: 'Month' },
+            yaxis: { title: 'Value (%)' },
+            margin: { l: 50, r: 50, t: 20, b: 50 }
+        };
+        
+        Plotly.newPlot(performanceDiv, [trace], layout, { responsive: true });
+    }
+    
+    // Risk vs Return Scatter Plot
+    const riskReturnDiv = document.getElementById('risk-return-chart');
+    if (riskReturnDiv) {
+        const trace = {
+            x: [15, 20, 25, 18, 22], // Risk (volatility)
+            y: [8, 12, 15, 10, 14],  // Return
+            mode: 'markers+text',
+            type: 'scatter',
+            text: ['AAPL', 'GOOGL', 'MSFT', 'JNJ', 'Portfolio'],
+            textposition: 'top center',
+            marker: {
+                size: 12,
+                color: ['#667eea', '#764ba2', '#f093fb', '#f5576c', '#10b981']
+            }
+        };
+        
+        const layout = {
+            title: '',
+            xaxis: { title: 'Risk (Volatility %)' },
+            yaxis: { title: 'Return (%)' },
+            margin: { l: 50, r: 50, t: 20, b: 50 }
+        };
+        
+        Plotly.newPlot(riskReturnDiv, [trace], layout, { responsive: true });
+    }
+}
+
+function setupWebSocket() {
+    if (typeof WebSocketClient !== 'undefined') {
+        const wsClient = new WebSocketClient(currentPortfolioId);
+        
+        wsClient.onPortfolioData = function(data, timestamp) {
+            // Update portfolio display with real-time data
+            if (data.total_value) {
+                document.getElementById('portfolio-total-value').textContent = `$${data.total_value.toLocaleString()}`;
+            }
+            
+            if (data.holdings) {
+                updateHoldingsTable(data.holdings, data.total_value || 0);
+            }
+        };
+    }
+}
+
+// Action Functions
+function refreshPortfolio() {
+    loadPortfolioDetails();
+    showAlert('Portfolio data refreshed', 'success');
+}
+
+async function analyzePortfolio() {
+    try {
+        showAlert('Running portfolio analysis...', 'info');
+        
+        // Get current portfolio
+        const response = await fetch(`/api/portfolio/${currentPortfolioId}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+            }
+        });
+        
+        const portfolio = await response.json();
+        const analysisResults = [];
+        
+        // Analyze each holding
+        for (const holding of portfolio.holdings) {
+            const analysisResponse = await fetch(`/api/analysis/${holding.symbol}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${localStorage.getItem('authToken')}`
+                },
+                body: JSON.stringify({
+                    indicators: ['sma', 'rsi', 'macd'],
+                    period: 30
+                })
+            });
+            
+            const analysis = await analysisResponse.json();
+            analysisResults.push(analysis);
+        }
+        
+        displayAnalysisResults(analysisResults);
+        showAlert('Portfolio analysis completed', 'success');
+        
+    } catch (error) {
+        console.error('Analysis failed:', error);
+        showAlert('Portfolio analysis failed', 'error');
+    }
+}
+
+function displayAnalysisResults(results) {
+    const container = document.getElementById('analysis-results');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="analysis-summary">
+            ${results.map(result => `
+                <div class="analysis-item" style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #e5e7eb; border-radius: 5px;">
+                    <h4>${result.symbol}</h4>
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div>
+                            <strong>Recommendation:</strong> 
+                            <span class="${result.recommendation.action.toLowerCase()}">${result.recommendation.action}</span>
+                        </div>
+                        <div>
+                            <strong>Confidence:</strong> ${(result.recommendation.confidence * 100).toFixed(0)}%
+                        </div>
+                        <div>
+                            <strong>RSI:</strong> ${result.indicators.rsi?.toFixed(1) || 'N/A'}
+                        </div>
+                    </div>
+                    <p style="margin-top: 0.5rem; font-size: 0.9rem; color: #6b7280;">
+                        ${result.recommendation.reasoning}
+                    </p>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function rebalancePortfolio() {
+    showAlert('Portfolio rebalancing feature coming soon!', 'warning');
+}
+
+function exportPortfolio() {
+    showAlert('Portfolio export feature coming soon!', 'warning');
+}
+
+function addHolding() {
+    document.getElementById('add-holding-modal').style.display = 'block';
+}
+
+function hideAddHoldingModal() {
+    document.getElementById('add-holding-modal').style.display = 'none';
+    document.getElementById('add-holding-form').reset();
+}
+
+function editHolding(symbol) {
+    showAlert(`Edit holding ${symbol} - feature coming soon!`, 'warning');
+}
+
+function removeHolding(symbol) {
+    if (confirm(`Remove ${symbol} from portfolio?`)) {
+        showAlert(`Remove holding ${symbol} - feature coming soon!`, 'warning');
+    }
+}
+
+// Form handlers
+document.getElementById('add-holding-form')?.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const symbol = formData.get('symbol').toUpperCase();
+    const shares = parseFloat(formData.get('shares'));
+    
+    showAlert(`Add ${shares} shares of ${symbol} - feature coming soon!`, 'warning');
+    hideAddHoldingModal();
+});
+
+function showAlert(message, type) {
+    // Simple alert implementation
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type}`;
+    alertDiv.textContent = message;
+    
+    const container = document.getElementById('alert-container') || document.body;
+    container.appendChild(alertDiv);
+    
+    setTimeout(() => alertDiv.remove(), 5000);
+}
+</script>
+
+<style>
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 1rem;
+}
+
+.metric {
+    text-align: center;
+    padding: 0.5rem;
+}
+
+.metric label {
+    display: block;
+    font-size: 0.9rem;
+    color: #6b7280;
+    margin-bottom: 0.25rem;
+}
+
+.metric span {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: #333;
+}
+
+.modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+}
+
+.modal-content {
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.analysis-item .buy { color: #10b981; }
+.analysis-item .sell { color: #ef4444; }
+.analysis-item .hold { color: #6b7280; }
+</style>
+{% endblock %}

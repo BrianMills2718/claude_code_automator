@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}ML Portfolio Analyzer{% endblock %}</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+    
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Plotly.js for advanced financial charts -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header>
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <a href="/" style="color: white; text-decoration: none;">
+                        ML Portfolio Analyzer
+                    </a>
+                </div>
+                
+                <nav>
+                    <ul class="nav-links">
+                        <li><a href="/">Dashboard</a></li>
+                        <li><a href="/portfolio">Portfolios</a></li>
+                        <li><a href="/market">Market Data</a></li>
+                        <li><a href="/analysis">Analysis</a></li>
+                        <li>
+                            <span id="ws-connection-status" class="status-indicator offline" title="Real-time data disconnected"></span>
+                            <span id="ws-status-text">Offline</span>
+                        </li>
+                        <li>
+                            <button id="logout-btn" class="btn btn-secondary" style="padding: 0.5rem 1rem;">
+                                Logout
+                            </button>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            <!-- Alert Container -->
+            <div id="alert-container"></div>
+            
+            <!-- Notification Container -->
+            <div id="notification-container"></div>
+            
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p style="text-align: center; padding: 2rem 0; color: #6b7280;">
+                &copy; 2024 ML Portfolio Analyzer. Advanced Financial Analysis System.
+                <span style="margin-left: 1rem;">
+                    Last Update: <span id="last-update-time">--:--:--</span>
+                </span>
+            </p>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="/static/js/websocket.js"></script>
+    <script src="/static/js/dashboard.js"></script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

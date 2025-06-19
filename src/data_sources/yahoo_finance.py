@@ -82,17 +82,24 @@ class YahooFinanceAdapter(DataSourceBase):
 
     async def search_symbols(self, query: str) -> List[Dict[str, str]]:
         def _search() -> List[Dict[str, str]]:
-            tickers = yf.Tickers(query)
-            return [
-                {
-                    'symbol': ticker.ticker,
-                    'name': ticker.info.get('longName', ''),
-                    'type': ticker.info.get('quoteType', ''),
-                    'exchange': ticker.info.get('exchange', '')
-                }
-                for ticker in tickers.tickers
-                if hasattr(ticker, 'info') and ticker.info
-            ]
+            # Use yfinance's Ticker to get basic info for a specific symbol
+            # This is a simplified implementation since yfinance doesn't have a search API
+            try:
+                ticker = yf.Ticker(query.upper())
+                info = ticker.info
+                if info and 'symbol' in info:
+                    return [
+                        {
+                            'symbol': info.get('symbol', query.upper()),
+                            'name': info.get('longName', info.get('shortName', '')),
+                            'type': info.get('quoteType', ''),
+                            'exchange': info.get('exchange', '')
+                        }
+                    ]
+            except Exception:
+                # If exact match fails, return empty list
+                pass
+            return []
         
         result: List[Dict[str, str]] = self._execute_with_error_handling(_search)
         return result

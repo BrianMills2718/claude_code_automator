@@ -1,0 +1,12 @@
+{
+  "name": "lint_test_models",
+  "description": "Fix lint errors in ./tests/test_storage/test_models.py",
+  "status": "completed",
+  "session_id": "cd29050e-6053-4bb9-8fe6-a2cefa70b7b2",
+  "cost_usd": 0.09111555000000002,
+  "duration_ms": 20520,
+  "error": null,
+  "start_time": "2025-06-19T09:08:23.068959",
+  "end_time": "2025-06-19T09:08:44.188178",
+  "think_mode": null
+}

@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - ML Portfolio Analyzer{% endblock %}
+
+{% block content %}
+<!-- Authentication Check -->
+<div id="auth-section">
+    <!-- Login Form (shown when not authenticated) -->
+    <div id="login-section" class="card" style="max-width: 400px; margin: 2rem auto;">
+        <h2>Login to Your Portfolio</h2>
+        <form id="login-form">
+            <div class="form-group">
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" value="demo@example.com" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" value="demo123" required>
+            </div>
+            <button type="submit" class="btn">Login</button>
+            <p style="margin-top: 1rem; font-size: 0.9rem; color: #6b7280;">
+                Demo credentials: demo@example.com / demo123
+            </p>
+        </form>
+    </div>
+    
+    <!-- Dashboard Content (shown when authenticated) -->
+    <div id="dashboard-content" style="display: none;">
+        
+        <!-- Portfolio Overview -->
+        <section class="dashboard-section">
+            <h2>Portfolio Overview</h2>
+            <div class="dashboard-grid" id="portfolios-container">
+                <!-- Portfolio cards will be loaded here -->
+                <div class="card">
+                    <div class="loading-spinner"></div>
+                    <p>Loading portfolios...</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Market Data Overview -->
+        <section class="dashboard-section">
+            <div class="card" id="market-data-container">
+                <div class="loading-spinner"></div>
+                <p>Loading market data...</p>
+            </div>
+        </section>
+
+        <!-- Performance Charts -->
+        <section class="dashboard-section">
+            <div class="dashboard-grid">
+                <div class="card">
+                    <h3>Portfolio Composition</h3>
+                    <div class="chart-container">
+                        <canvas id="portfolio-composition-chart"></canvas>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h3>Performance Trend</h3>
+                    <div class="chart-container">
+                        <canvas id="performance-chart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Actions -->
+        <section class="dashboard-section">
+            <div class="card">
+                <h3>Quick Actions</h3>
+                <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                    <button class="btn" onclick="showCreatePortfolioForm()">
+                        Create New Portfolio
+                    </button>
+                    <button class="btn btn-secondary" onclick="refreshAllData()">
+                        Refresh Data
+                    </button>
+                    <button class="btn btn-secondary" onclick="exportData()">
+                        Export Reports
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Create Portfolio Form (hidden by default) -->
+        <div id="create-portfolio-modal" class="card" style="display: none; max-width: 500px; margin: 2rem auto;">
+            <h3>Create New Portfolio</h3>
+            <form id="create-portfolio-form">
+                <div class="form-group">
+                    <label for="portfolio-name">Portfolio Name:</label>
+                    <input type="text" id="portfolio-name" name="name" required maxlength="100">
+                </div>
+                <div class="form-group">
+                    <label for="portfolio-description">Description:</label>
+                    <textarea id="portfolio-description" name="description" rows="3" maxlength="500"></textarea>
+                </div>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="submit" class="btn">Create Portfolio</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideCreatePortfolioForm()">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// Dashboard-specific JavaScript
+
+// Check authentication status on load
+document.addEventListener('DOMContentLoaded', function() {
+    const authToken = localStorage.getItem('authToken');
+    
+    if (authToken) {
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-content').style.display = 'block';
+    } else {
+        document.getElementById('login-section').style.display = 'block';
+        document.getElementById('dashboard-content').style.display = 'none';
+    }
+});
+
+// Show/hide create portfolio form
+function showCreatePortfolioForm() {
+    document.getElementById('create-portfolio-modal').style.display = 'block';
+}
+
+function hideCreatePortfolioForm() {
+    document.getElementById('create-portfolio-modal').style.display = 'none';
+}
+
+// Refresh all dashboard data
+async function refreshAllData() {
+    if (window.dashboard) {
+        await window.dashboard.loadPortfolios();
+        await window.dashboard.loadMarketData();
+        window.dashboard.showAlert('Data refreshed successfully!', 'success');
+    }
+}
+
+// Export functionality (placeholder)
+function exportData() {
+    if (window.dashboard) {
+        window.dashboard.showAlert('Export functionality coming soon!', 'warning');
+    }
+}
+
+// Portfolio value update animation
+function animateValueChange(element, newValue) {
+    const currentValue = parseFloat(element.textContent.replace(/[$,]/g, ''));
+    const targetValue = parseFloat(newValue);
+    const duration = 1000; // 1 second
+    const steps = 60;
+    const increment = (targetValue - currentValue) / steps;
+    
+    let step = 0;
+    const timer = setInterval(() => {
+        step++;
+        const value = currentValue + (increment * step);
+        element.textContent = `$${value.toLocaleString()}`;
+        
+        if (step >= steps) {
+            clearInterval(timer);
+            element.textContent = `$${targetValue.toLocaleString()}`;
+        }
+    }, duration / steps);
+}
+
+// Real-time updates
+if (typeof WebSocketClient !== 'undefined') {
+    let wsClient = null;
+    
+    function initializeWebSocket() {
+        const authToken = localStorage.getItem('authToken');
+        if (authToken && !wsClient) {
+            wsClient = new WebSocketClient('portfolio_1');
+            
+            // Override WebSocket event handlers
+            wsClient.onPortfolioData = function(data, timestamp) {
+                console.log('Portfolio data update:', data);
+                
+                // Update total value with animation
+                const valueElement = document.getElementById('portfolio-total-value');
+                if (valueElement && data.total_value) {
+                    animateValueChange(valueElement, data.total_value);
+                }
+                
+                // Update other portfolio metrics
+                const changeElement = document.getElementById('portfolio-daily-change');
+                if (changeElement && data.daily_change !== undefined) {
+                    changeElement.textContent = `${data.daily_change >= 0 ? '+' : ''}${data.daily_change.toFixed(2)}%`;
+                    changeElement.className = `portfolio-change ${data.daily_change >= 0 ? 'positive' : 'negative'}`;
+                }
+            };
+            
+            wsClient.onPriceUpdate = function(data, timestamp) {
+                console.log('Price update:', data);
+                // Price updates handled in parent class
+            };
+        }
+    }
+    
+    // Initialize WebSocket when dashboard loads
+    document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(initializeWebSocket, 1000); // Delay to ensure authentication is checked
+    });
+}
+</script>
+{% endblock %}

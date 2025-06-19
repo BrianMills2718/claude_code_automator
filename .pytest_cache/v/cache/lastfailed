@@ -1,0 +1,4 @@
+{
+  "tests/integration/test_web_workflow.py": true,
+  "tests/integration/test_cli_workflow.py::TestCLIWorkflowIntegration::test_main_entry_point_no_args": true
+}

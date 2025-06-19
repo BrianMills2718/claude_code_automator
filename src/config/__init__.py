@@ -26,12 +26,12 @@ class Settings(BaseSettings):
     ALPHA_VANTAGE_INTRADAY_TIMESTAMP_FORMAT: str = "%Y-%m-%d %H:%M:%S"
     YAHOO_FINANCE_BACKOFF_MAX: int = 60  # seconds
     
-    # Database Settings
+    # Database Settings - Use SQLite by default
     POSTGRES_HOST: str = DEFAULT_POSTGRES_HOST
     POSTGRES_PORT: int = DEFAULT_POSTGRES_PORT
     POSTGRES_DB: str = DEFAULT_POSTGRES_DB
     POSTGRES_USER: str = DEFAULT_POSTGRES_USER
-    POSTGRES_PASSWORD: SecretStr
+    POSTGRES_PASSWORD: Optional[str] = None
     DATABASE_URL: Optional[str] = None
     
     # Redis Settings
@@ -40,9 +40,56 @@ class Settings(BaseSettings):
     REDIS_DB: int = DEFAULT_REDIS_DB
     REDIS_URL: Optional[str] = None
     
+    # Server Settings
+    SERVER_HOST: str = os.environ.get("SERVER_HOST", "0.0.0.0")
+    SERVER_PORT: int = int(os.environ.get("SERVER_PORT", "8000"))
+    
+    # UI Settings
+    DEMO_EMAIL: str = os.environ.get("DEMO_EMAIL", "demo@example.com")
+    DEMO_PASSWORD: str = os.environ.get("DEMO_PASSWORD", "demo123")
+    
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
+    
+    # Application Settings (for main.py compatibility)
+    APP_NAME: str = "ML Portfolio Analyzer"
+    WEB_SERVER_FLAG: str = "--web-server"
+    SUCCESS_MESSAGE: str = "✅ System initialized successfully."
+    HELP_COMMANDS_HEADER: str = "🖥️  Available Commands:"
+    
+    # Server Messages
+    SERVER_START_MESSAGE: str = "🚀 Starting ML Portfolio Analyzer Web Server..."
+    SERVER_STOP_MESSAGE: str = "✨ Press Ctrl+C to stop the server"
+    DASHBOARD_URL_TEMPLATE: str = "📊 Dashboard: http://localhost:{port}"
+    API_DOCS_URL_TEMPLATE: str = "📚 API Docs: http://localhost:{port}/docs"
+    SERVER_ERROR_TEMPLATE: str = "❌ Failed to start web server: {error}"
+    DEPENDENCY_ERROR_MESSAGE: str = "❌ Web server dependencies not available."
+    DEPENDENCY_INSTALL_MESSAGE: str = "📦 Install with: pip install fastapi uvicorn"
+    
+    # Environment variable names
+    ALPHA_VANTAGE_API_KEY_ENV: str = "ALPHA_VANTAGE_API_KEY"
+    POSTGRES_PASSWORD_ENV: str = "POSTGRES_PASSWORD"
+    
+    # Warning templates
+    API_KEY_WARNING_TEMPLATE: str = "{env_var} not set, using Yahoo Finance only"
+    DATABASE_WARNING_TEMPLATE: str = "{env_var} not set, database storage will be unavailable"
+    
+    # Uvicorn settings
+    UVICORN_LOG_LEVEL: str = "info"
+    
+    @property 
+    def CLI_COMMANDS(self) -> list:
+        return [
+            "python main.py --web-server  # Launch web dashboard",
+            "python main.py fetch AAPL    # Fetch stock data",
+            "python main.py search Apple  # Search for symbols",
+            "python main.py analyze AAPL  # Analyze stock data"
+        ]
+    
+    @property
+    def DEMO_LOGIN_TEMPLATE(self) -> str:
+        return "💻 Demo Login: {email} / {password}"
     
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
@@ -51,10 +98,17 @@ class Settings(BaseSettings):
         
     def _init_database_url(self) -> None:
         if not self.DATABASE_URL:
-            self.DATABASE_URL = (
-                f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD.get_secret_value()}"
-                f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
-            )
+            # Try PostgreSQL first, fall back to SQLite if password not available
+            try:
+                if self.POSTGRES_PASSWORD:
+                    self.DATABASE_URL = (
+                        f"postgresql://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
+                        f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
+                    )
+                else:
+                    self.DATABASE_URL = DEFAULT_SQLITE_DB
+            except Exception:
+                self.DATABASE_URL = DEFAULT_SQLITE_DB
             
     def _init_redis_url(self) -> None:
         if not self.REDIS_URL:
