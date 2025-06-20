@@ -2,58 +2,92 @@
 
 **FOR CLAUDE CODE AGENTS**: This document contains everything needed to implement robust cc_automator4 features. Follow these patterns and principles exactly.
 
-## WORKING NOTES (REMOVE WHEN COMPLETE)
-<!-- Archive to: docs/implementation_strategies.md when done -->
+## 🚨 CRITICAL SYSTEM STABILITY WORK (HIGHEST PRIORITY)
 
-### V4 IMPLEMENTATION COMPLETE ✅ 
-**GOAL**: Build intelligent meta-agent orchestration system for V4
-**PREVIOUS**: ✅ V3 validated and stabilized - TaskGroup issues resolved
-**STATUS**: ✅ V4 META-AGENT IMPLEMENTED AND READY FOR USE
+**PRIMARY GOAL**: Build a stable, honest, and verifiable automation system
+**CURRENT STATUS**: ❌ SYSTEM IS UNSTABLE - SDK errors causing constant failures
+**APPROACH**: Stop all feature development until foundational stability is achieved
 
-**V3 VALIDATION COMPLETE** ✅ (Commit 91427f7):
-1. ✅ **TaskGroup Issues Resolved**: V4 SDK wrapper (`src/claude_code_sdk_fixed_v4.py`) provides actual async cleanup fixes
-2. ✅ **ML Portfolio Success**: 3/4 milestones completed, proves V3 core stability  
-3. ✅ **SDK Integration Verified**: V4 integration tests passing, no more CLI fallbacks
-4. ✅ **Evidence-Based Validation Working**: Anti-cheating system prevents false completions
-5. ✅ **Memory Management Active**: Adaptive memory manager prevents resource issues
-6. ✅ **Resume Functionality Enhanced**: Comprehensive state validation for reliable resumption
+### STABILITY CRISIS ANALYSIS
 
-**V3 REMAINING LIMITATIONS** (Requiring Intelligence):
-- Architecture phase stuck in infinite loops (66+ attempts on ML Portfolio)
-- Programmatic validation cannot adapt to project-specific contexts  
-- Rigid phase pipeline cannot learn from repeated failures
-- No contextual decision-making for different project types
+**Root Cause**: The underlying SDK is fundamentally unstable, causing:
+- CLIJSONDecodeError: Failed to decode JSON (current primary failure)
+- TaskGroup unhandled errors (partially addressed but not eliminated)
+- System claiming success when it actually failed (anti-pattern)
+- Recovery tools themselves failing (meta-failure)
 
-**V4 META-AGENT DEVELOPMENT READY**:
-- 🟢 **Stable V3 Foundation**: Provides reliable baseline orchestration
-- 🟢 **Clear Intelligence Gap**: Need adaptive strategies, not more programmatic rules
-- 🟢 **Evidence System Proven**: V3 anti-cheating prevents meta-agent from lying
-- 🟢 **Resource Management**: Memory and resume systems handle complexity
+**Impact**: The system cannot be trusted because:
+1. It lies about completion status
+2. Evidence files may be fabricated or incomplete  
+3. Recovery mechanisms are unreliable
+4. Users get broken implementations marked as "successful"
 
-**V4 META-AGENT REQUIREMENTS**:
-1. **Intelligent Strategy Selection**: Choose different approaches based on project type and context
-2. **Failure Pattern Recognition**: Learn from repeated failures and adapt strategies  
-3. **Contextual Decision Making**: Make nuanced decisions about when to retry vs. pivot
-4. **Multi-Strategy Orchestration**: Run multiple approaches in parallel when beneficial
-5. **Evidence-Based Learning**: Use V3's validation system to verify meta-agent decisions
+### NEW DIRECTIVES (NON-NEGOTIABLE)
 
-**V4 IMPLEMENTATION COMPLETED** ✅:
-1. ✅ **Meta-Agent Architecture Designed**: Strategy selection, failure analysis, contextual adaptation
-2. ✅ **Strategy Manager Implemented**: Multiple orchestration approaches for different scenarios
-3. ✅ **Failure Pattern Analyzer Built**: Learns from V3 validation failures to improve strategies
-4. ✅ **Multi-Strategy Executor Created**: Parallel strategy execution with intelligent selection
-5. ✅ **V3 Evidence System Integrated**: Anti-cheating validation preserved in all meta-agent decisions
+**Directive 1: Absolute Honesty**
+- NEVER claim success without verifiable proof
+- Treat ALL errors as critical failures requiring fixes
+- Embrace failure as data - don't hide problems
 
-**V4 COMPONENTS DELIVERED**:
-- `src/v4_meta_orchestrator.py` - Main V4 orchestrator with intelligent decision making
-- `src/v4_strategy_manager.py` - Strategy selection and management 
-- `src/v4_failure_analyzer.py` - Failure pattern detection and learning
-- `src/v4_context_analyzer.py` - Project context analysis
-- `src/v4_multi_executor.py` - Parallel strategy execution
-- `cli.py` - Updated with V4 command-line options
-- Full documentation and tests
+**Directive 2: SDK Stability First**  
+- Build one consolidated `claude_code_sdk_stable.py` 
+- Create rigorous test suite in `tests/sdk/`
+- NO SDK wrapper is "done" until it passes ALL stability tests
+- Eliminate ALL CLIJSONDecodeError and TaskGroup errors
 
-<!-- Archive to: docs/v3_stability_work.md when V3 hardening complete -->
+**Directive 3: Evidence-Based Validation**
+- Complete `src/enhanced_e2e_validator.py` (remove NotImplementedError)
+- Enforce strict evidence logs with actual command outputs
+- Implement user journey integration tests
+- Make validation impossible to deceive
+
+**Directive 4: Verify Recovery Tools**
+- Create tests for ALL recovery mechanisms
+- Prove tools work before claiming they're functional
+- Fix manual phase completion tool (currently failing)
+
+### IMPLEMENTATION PRIORITY ORDER
+
+**PHASE 1: SDK STABILIZATION** (BLOCKING ALL OTHER WORK)
+1. ❌ Fix JSON repair bug in `src/claude_code_sdk_stable.py`
+2. ❌ Make ALL tests in `tests/sdk/manual_sdk_test.py` pass
+3. ❌ Eliminate CLIJSONDecodeError completely
+4. ❌ Prove SDK can execute 10 consecutive operations without failure
+
+**PHASE 2: VALIDATION SYSTEM** (AFTER SDK IS STABLE)
+1. ❌ Complete `src/enhanced_e2e_validator.py`
+2. ❌ Implement strict evidence logging
+3. ❌ Add user journey testing capability
+4. ❌ Prove validator cannot be deceived
+
+**PHASE 3: RECOVERY VERIFICATION** (AFTER VALIDATION WORKS)
+1. ❌ Fix manual phase completion tool
+2. ❌ Create tests for all recovery mechanisms
+3. ❌ Verify each tool actually works
+
+**PHASE 4: SYSTEM INTEGRATION** (AFTER ALL COMPONENTS STABLE)
+1. ❌ Integrate stable SDK into phase orchestrator
+2. ❌ Replace all unstable SDK wrappers
+3. ❌ Run full system test with enhanced validation
+
+### SUCCESS CRITERIA (MEASURABLE)
+
+The system is considered stable when:
+- [ ] `tests/sdk/manual_sdk_test.py` passes 100%
+- [ ] Enhanced E2E validator detects all failure scenarios
+- [ ] Recovery tools pass their own test suites
+- [ ] 5 consecutive full project runs complete without SDK errors
+- [ ] Evidence logs contain actual command outputs and statuses
+
+### BLOCKED ACTIVITIES
+
+Until stability is achieved, the following are FORBIDDEN:
+- ❌ Any V4 meta-agent development
+- ❌ New feature additions
+- ❌ Performance optimizations
+- ❌ Documentation updates (except this stability work)
+
+**REMEMBER**: A broken system that claims to work is worse than a system that honestly admits its limitations.
 
 ## V4 Meta-Agent Development Guide
 
