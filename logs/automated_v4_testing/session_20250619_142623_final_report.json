@@ -1,0 +1,26 @@
+{
+  "session_summary": {
+    "session_id": "20250619_142623",
+    "total_time": "0:01:02.618427",
+    "total_attempts": 1,
+    "successful_attempts": 0,
+    "success_rate": 0.0,
+    "common_issues": {
+      "Unknown": 1
+    }
+  },
+  "detailed_results": [
+    {
+      "attempt": 1,
+      "start_time": "2025-06-19T14:26:23.568231",
+      "end_time": "2025-06-19T14:27:26.186446",
+      "success": false,
+      "execution_time": 60,
+      "error": "Timeout after 60s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    }
+  ]
+}

@@ -475,6 +475,9 @@ research → planning → implement → architecture → lint → typecheck → 
 ### E2E Phase
 - **MUST create evidence log**: `milestone_N/e2e_evidence.log`
 - **MUST test main.py execution** with interactive program detection
+- **MUST validate user journeys**: Test realistic command sequences (e.g., fetch→analyze)
+- **MUST check integration consistency**: Verify related commands work together properly
+- **MUST detect state dependencies**: Ensure commands handle missing prerequisites gracefully
 
 ### Commit Phase
 - **MUST create git commit** with proper message format
@@ -529,7 +532,7 @@ def _validate_e2e_phase():
 - **typecheck**: Clean output from `mypy --strict`
 - **test**: `pytest tests/unit` passes
 - **integration**: `pytest tests/integration` passes
-- **e2e**: `milestone_N/e2e_evidence.log` AND `python main.py` succeeds
+- **e2e**: `milestone_N/e2e_evidence.log` AND `python main.py` succeeds AND user journeys validated
 - **commit**: Git commit created
 
 ### Common Validation Commands
@@ -540,6 +543,13 @@ def _validate_e2e_phase():
 - **E2E test**: `python main.py` (with input handling)
 
 ## Common Error Patterns
+
+### Integration Failures Between Commands
+- **Symptom**: Individual commands work but fail when used in sequence (e.g., fetch→analyze)
+- **Root Cause**: E2E phase only does smoke testing, not workflow validation
+- **Solution**: Implement user journey testing for common command sequences
+- **Detection**: Test sequential commands with dependency relationships
+- **Prevention**: Validate state persistence and graceful degradation
 
 ### "TaskGroup" SDK Errors
 - **Symptom**: TaskGroup error with partial completion
@@ -606,6 +616,52 @@ def _select_model_for_phase(phase_name: str) -> Optional[str]:
     if phase_name in mechanical_phases:
         return "claude-sonnet-4-20250514"  # Cost-effective for pattern recognition
     return None  # Use default (Opus) for creative work
+```
+
+### 4. User Journey Validation (E2E Phase)
+
+```python
+def validate_user_journeys(cli_commands: List[str]) -> Dict[str, bool]:
+    """Test realistic user workflows beyond basic smoke tests."""
+    journeys = {
+        "fetch_then_analyze": ["fetch AAPL", "analyze AAPL"],
+        "search_then_view": ["search tech", "view MSFT"],
+        "crud_operations": ["create", "list", "update 1", "delete 1"]
+    }
+    
+    results = {}
+    for journey_name, commands in journeys.items():
+        success = test_command_sequence(commands)
+        results[journey_name] = success
+    return results
+
+def test_command_sequence(commands: List[str]) -> bool:
+    """Execute commands in sequence and validate outputs."""
+    for i, cmd in enumerate(commands):
+        result = run_command(f"python main.py {cmd}")
+        if not validate_output(result, cmd, previous_commands=commands[:i]):
+            return False
+    return True
+```
+
+### 5. Integration Consistency Validation
+
+```python
+def validate_integration_consistency(commands: Dict[str, CommandInfo]) -> List[Issue]:
+    """Ensure related commands have consistent behavior."""
+    issues = []
+    
+    # Check state dependencies
+    if "fetch" in commands and "analyze" in commands:
+        if commands["fetch"].saves_to_db and not commands["analyze"].reads_from_db:
+            issues.append("fetch saves data but analyze doesn't use it")
+    
+    # Check error handling consistency
+    for cmd_pair in get_related_command_pairs(commands):
+        if not have_consistent_error_handling(cmd_pair):
+            issues.append(f"Inconsistent error handling: {cmd_pair}")
+    
+    return issues
 ```
 
 ## Architecture Phase Methodology
@@ -786,6 +842,8 @@ When implementing any cc_automator4 feature:
 - [ ] Does it follow the eleven-phase pipeline with architecture quality gate?
 - [ ] Does it support parallel execution where beneficial?
 - [ ] Does it iterate until success or max attempts?
+- [ ] Does it validate user workflows, not just individual commands?
+- [ ] Does it check integration consistency between related features?
 
 ## Documentation Archive
 
@@ -795,3 +853,585 @@ When implementation is complete, move working notes to:
 - `docs/decision_rationale.md` - Why certain approaches were chosen
 
 **Remember**: The goal is a robust, generalist system that prevents Claude from taking shortcuts while optimizing for speed and cost.
+
+## E2E Enhancement Implementation Guide
+
+### Required Files to Implement Enhanced E2E Testing
+
+The following files must be created to implement the enhanced E2E testing that prevents integration failures like the fetch→analyze bug:
+
+#### 1. Create `src/user_journey_validator.py`
+
+```python
+from typing import List, Dict, Optional, NamedTuple
+import subprocess
+import re
+from pathlib import Path
+import logging
+
+class UserJourney(NamedTuple):
+    name: str
+    commands: List[str]
+    forbidden_patterns: List[str]
+    required_patterns: Optional[List[str]] = None
+
+class JourneyResult(NamedTuple):
+    success: bool
+    command: str
+    output: str
+    error: Optional[str] = None
+
+class UserJourneyValidator:
+    """Validates realistic user workflows beyond basic smoke tests."""
+    
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+        self.logger = logging.getLogger(__name__)
+    
+    def get_default_journeys(self) -> List[UserJourney]:
+        """Return common user journey patterns to test."""
+        return [
+            UserJourney(
+                name="fetch_then_analyze",
+                commands=["python main.py fetch AAPL", "python main.py analyze AAPL"],
+                forbidden_patterns=[r"No data found", r"Error:", r"Traceback", r"failed"]
+            ),
+            UserJourney(
+                name="crud_operations",
+                commands=["python main.py create item1", "python main.py list", "python main.py update item1", "python main.py delete item1"],
+                forbidden_patterns=[r"Error:", r"Traceback", r"not found", r"failed"]
+            ),
+            UserJourney(
+                name="search_then_view",
+                commands=["python main.py search tech", "python main.py view MSFT"],
+                forbidden_patterns=[r"Error:", r"Traceback", r"not found", r"failed"]
+            ),
+            UserJourney(
+                name="config_then_run",
+                commands=["python main.py config set key=value", "python main.py run"],
+                forbidden_patterns=[r"Error:", r"Traceback", r"not configured", r"failed"]
+            )
+        ]
+    
+    def detect_available_commands(self) -> List[str]:
+        """Detect available commands by running help."""
+        try:
+            result = subprocess.run(
+                ["python", "main.py", "--help"],
+                cwd=self.project_root,
+                capture_output=True,
+                text=True,
+                timeout=30
+            )
+            
+            # Extract command names from help output
+            commands = []
+            for line in result.stdout.split('\n'):
+                # Look for command patterns in help output
+                if 'Commands:' in line or 'Usage:' in line:
+                    continue
+                # Simple heuristic: lines with alphanumeric words that could be commands
+                words = line.strip().split()
+                if words and words[0].isalpha() and len(words[0]) > 2:
+                    commands.append(words[0])
+            
+            return commands[:10]  # Limit to reasonable number
+        except Exception as e:
+            self.logger.warning(f"Could not detect commands: {e}")
+            return []
+    
+    def generate_adaptive_journeys(self) -> List[UserJourney]:
+        """Generate journeys based on detected commands."""
+        commands = self.detect_available_commands()
+        journeys = []
+        
+        # Generate simple sequential patterns
+        if len(commands) >= 2:
+            for i in range(min(3, len(commands) - 1)):
+                journeys.append(UserJourney(
+                    name=f"sequence_{commands[i]}_{commands[i+1]}",
+                    commands=[f"python main.py {commands[i]}", f"python main.py {commands[i+1]}"],
+                    forbidden_patterns=[r"Error:", r"Traceback", r"failed", r"not found"]
+                ))
+        
+        return journeys
+    
+    def validate_journey(self, journey: UserJourney) -> List[JourneyResult]:
+        """Execute a user journey and validate outputs."""
+        results = []
+        
+        for i, command in enumerate(journey.commands):
+            try:
+                result = subprocess.run(
+                    command.split(),
+                    cwd=self.project_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                    input="\n" * 10  # Provide default inputs for interactive programs
+                )
+                
+                output = result.stdout + result.stderr
+                success = self._validate_output(output, journey, command, i)
+                
+                results.append(JourneyResult(
+                    success=success,
+                    command=command,
+                    output=output,
+                    error=None if success else f"Command failed validation"
+                ))
+                
+                # Stop on first failure
+                if not success:
+                    break
+                    
+            except subprocess.TimeoutExpired:
+                results.append(JourneyResult(
+                    success=False,
+                    command=command,
+                    output="",
+                    error="Command timed out"
+                ))
+                break
+            except Exception as e:
+                results.append(JourneyResult(
+                    success=False,
+                    command=command,
+                    output="",
+                    error=str(e)
+                ))
+                break
+        
+        return results
+    
+    def _validate_output(self, output: str, journey: UserJourney, command: str, command_index: int) -> bool:
+        """Validate command output against journey requirements."""
+        # Check forbidden patterns
+        for pattern in journey.forbidden_patterns:
+            if re.search(pattern, output, re.IGNORECASE):
+                self.logger.warning(f"Found forbidden pattern '{pattern}' in output: {output[:200]}")
+                return False
+        
+        # Check required patterns if specified
+        if journey.required_patterns:
+            for pattern in journey.required_patterns:
+                if not re.search(pattern, output, re.IGNORECASE):
+                    self.logger.warning(f"Missing required pattern '{pattern}' in output")
+                    return False
+        
+        # Command-specific validation
+        if "fetch" in command and command_index == 0:
+            # First fetch should show some data
+            if len(output.strip()) < 10:
+                self.logger.warning("Fetch command produced minimal output")
+                return False
+        
+        return True
+    
+    def validate_all_journeys(self) -> Dict[str, bool]:
+        """Validate all user journeys."""
+        all_journeys = self.get_default_journeys() + self.generate_adaptive_journeys()
+        results = {}
+        
+        for journey in all_journeys:
+            journey_results = self.validate_journey(journey)
+            overall_success = all(r.success for r in journey_results)
+            results[journey.name] = overall_success
+            
+            if not overall_success:
+                self.logger.error(f"Journey '{journey.name}' failed:")
+                for result in journey_results:
+                    if not result.success:
+                        self.logger.error(f"  Command: {result.command}")
+                        self.logger.error(f"  Error: {result.error}")
+                        self.logger.error(f"  Output: {result.output[:200]}")
+        
+        return results
+```
+
+#### 2. Create `src/integration_consistency_validator.py`
+
+```python
+from typing import List, Dict, NamedTuple, Set
+import ast
+import re
+from pathlib import Path
+import logging
+
+class CommandDependencies(NamedTuple):
+    name: str
+    reads_from_db: bool
+    writes_to_db: bool
+    requires_auth: bool
+    requires_config: bool
+    file_path: str
+
+class DependencyInconsistency(NamedTuple):
+    command1: str
+    command2: str
+    issue: str
+    severity: str
+
+class IntegrationConsistencyValidator:
+    """Ensures related commands have consistent behavior and dependencies."""
+    
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+        self.logger = logging.getLogger(__name__)
+    
+    def analyze_command_dependencies(self) -> Dict[str, CommandDependencies]:
+        """Analyze all commands to understand their dependencies."""
+        dependencies = {}
+        
+        # Find command files
+        command_files = list(self.project_root.rglob("**/commands.py")) + \
+                      list(self.project_root.rglob("**/cli.py")) + \
+                      list(self.project_root.rglob("main.py"))
+        
+        for file_path in command_files:
+            try:
+                file_deps = self._analyze_file_dependencies(file_path)
+                dependencies.update(file_deps)
+            except Exception as e:
+                self.logger.warning(f"Could not analyze {file_path}: {e}")
+        
+        return dependencies
+    
+    def _analyze_file_dependencies(self, file_path: Path) -> Dict[str, CommandDependencies]:
+        """Analyze a single file for command dependencies."""
+        dependencies = {}
+        
+        try:
+            content = file_path.read_text()
+            tree = ast.parse(content)
+            
+            # Find command functions
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    cmd_deps = self._analyze_function_dependencies(node, content, str(file_path))
+                    if cmd_deps:
+                        dependencies[node.name] = cmd_deps
+                
+        except Exception as e:
+            self.logger.warning(f"Could not parse {file_path}: {e}")
+        
+        return dependencies
+    
+    def _analyze_function_dependencies(self, func_node: ast.FunctionDef, content: str, file_path: str) -> Optional[CommandDependencies]:
+        """Analyze a function to determine its dependencies."""
+        func_source = ast.get_source_segment(content, func_node) or ""
+        
+        # Skip if not a command function
+        if not self._is_command_function(func_node, func_source):
+            return None
+        
+        reads_from_db = any(pattern in func_source for pattern in [
+            ".get(", ".query(", ".filter(", "SELECT", "session.get"
+        ])
+        
+        writes_to_db = any(pattern in func_source for pattern in [
+            ".save(", ".create(", ".update(", ".delete(", "INSERT", "UPDATE", "session.add"
+        ])
+        
+        requires_auth = any(pattern in func_source for pattern in [
+            "auth", "login", "token", "authenticate", "permission"
+        ])
+        
+        requires_config = any(pattern in func_source for pattern in [
+            "config", "settings", "environment", "API_KEY", "SECRET"
+        ])
+        
+        return CommandDependencies(
+            name=func_node.name,
+            reads_from_db=reads_from_db,
+            writes_to_db=writes_to_db,
+            requires_auth=requires_auth,
+            requires_config=requires_config,
+            file_path=file_path
+        )
+    
+    def _is_command_function(self, func_node: ast.FunctionDef, func_source: str) -> bool:
+        """Determine if a function is a CLI command."""
+        # Check for CLI decorators
+        for decorator in func_node.decorator_list:
+            if isinstance(decorator, ast.Name) and decorator.id in ["command", "click_command"]:
+                return True
+            if isinstance(decorator, ast.Attribute) and decorator.attr == "command":
+                return True
+        
+        # Check for CLI framework patterns
+        cli_patterns = ["@app.command", "@click.command", "def main", "def cli"]
+        return any(pattern in func_source for pattern in cli_patterns)
+    
+    def find_inconsistencies(self, dependencies: Dict[str, CommandDependencies]) -> List[DependencyInconsistency]:
+        """Find dependency inconsistencies between related commands."""
+        inconsistencies = []
+        
+        # Group related commands
+        command_groups = self._group_related_commands(dependencies)
+        
+        for group_name, commands in command_groups.items():
+            group_inconsistencies = self._check_group_consistency(commands)
+            inconsistencies.extend(group_inconsistencies)
+        
+        return inconsistencies
+    
+    def _group_related_commands(self, dependencies: Dict[str, CommandDependencies]) -> Dict[str, List[CommandDependencies]]:
+        """Group commands that are likely related."""
+        groups = {
+            "data_operations": [],
+            "auth_operations": [],
+            "config_operations": [],
+            "analysis_operations": []
+        }
+        
+        for cmd_name, cmd_deps in dependencies.items():
+            # Data operations
+            if any(keyword in cmd_name.lower() for keyword in ["fetch", "get", "load", "save", "store", "analyze", "process"]):
+                groups["data_operations"].append(cmd_deps)
+            
+            # Auth operations
+            if any(keyword in cmd_name.lower() for keyword in ["login", "auth", "user", "register"]):
+                groups["auth_operations"].append(cmd_deps)
+            
+            # Config operations
+            if any(keyword in cmd_name.lower() for keyword in ["config", "setup", "init", "configure"]):
+                groups["config_operations"].append(cmd_deps)
+            
+            # Analysis operations
+            if any(keyword in cmd_name.lower() for keyword in ["analyze", "report", "calculate", "predict"]):
+                groups["analysis_operations"].append(cmd_deps)
+        
+        # Remove empty groups
+        return {k: v for k, v in groups.items() if v}
+    
+    def _check_group_consistency(self, commands: List[CommandDependencies]) -> List[DependencyInconsistency]:
+        """Check consistency within a group of related commands."""
+        inconsistencies = []
+        
+        if len(commands) < 2:
+            return inconsistencies
+        
+        # Check data persistence consistency
+        writers = [cmd for cmd in commands if cmd.writes_to_db]
+        readers = [cmd for cmd in commands if cmd.reads_from_db]
+        
+        if writers and readers:
+            # Check if readers can actually read what writers write
+            for writer in writers:
+                for reader in readers:
+                    if self._are_related_commands(writer.name, reader.name):
+                        # They should have consistent DB access patterns
+                        if writer.writes_to_db and not reader.reads_from_db:
+                            inconsistencies.append(DependencyInconsistency(
+                                command1=writer.name,
+                                command2=reader.name,
+                                issue=f"{writer.name} saves data but {reader.name} doesn't read from DB",
+                                severity="high"
+                            ))
+        
+        # Check configuration consistency
+        config_users = [cmd for cmd in commands if cmd.requires_config]
+        if len(config_users) > 1:
+            # All should handle missing config consistently
+            for i, cmd1 in enumerate(config_users):
+                for cmd2 in config_users[i+1:]:
+                    if not self._have_consistent_config_handling(cmd1, cmd2):
+                        inconsistencies.append(DependencyInconsistency(
+                            command1=cmd1.name,
+                            command2=cmd2.name,
+                            issue="Inconsistent configuration handling",
+                            severity="medium"
+                        ))
+        
+        return inconsistencies
+    
+    def _are_related_commands(self, cmd1: str, cmd2: str) -> bool:
+        """Check if two commands are related (e.g., fetch/analyze)."""
+        related_pairs = [
+            ("fetch", "analyze"), ("get", "analyze"), ("load", "process"),
+            ("create", "list"), ("add", "show"), ("save", "load"),
+            ("search", "view"), ("find", "show")
+        ]
+        
+        for pair in related_pairs:
+            if (pair[0] in cmd1.lower() and pair[1] in cmd2.lower()) or \
+               (pair[1] in cmd1.lower() and pair[0] in cmd2.lower()):
+                return True
+        
+        return False
+    
+    def _have_consistent_config_handling(self, cmd1: CommandDependencies, cmd2: CommandDependencies) -> bool:
+        """Check if two commands handle configuration consistently."""
+        # This is a simplified check - in reality, you'd analyze the actual error handling
+        return cmd1.requires_config == cmd2.requires_config
+    
+    def validate_consistency(self) -> Dict[str, any]:
+        """Validate integration consistency across the project."""
+        dependencies = self.analyze_command_dependencies()
+        inconsistencies = self.find_inconsistencies(dependencies)
+        
+        return {
+            "total_commands": len(dependencies),
+            "inconsistencies": len(inconsistencies),
+            "issues": [
+                {
+                    "command1": inc.command1,
+                    "command2": inc.command2,
+                    "issue": inc.issue,
+                    "severity": inc.severity
+                }
+                for inc in inconsistencies
+            ],
+            "success": len(inconsistencies) == 0
+        }
+```
+
+#### 3. Create `src/enhanced_e2e_validator.py`
+
+```python
+from typing import Dict, Tuple, List
+from pathlib import Path
+import logging
+from .user_journey_validator import UserJourneyValidator
+from .integration_consistency_validator import IntegrationConsistencyValidator
+
+class EnhancedE2EValidator:
+    """Enhanced E2E validator that combines basic tests with user journey validation."""
+    
+    def __init__(self, project_root: Path):
+        self.project_root = project_root
+        self.logger = logging.getLogger(__name__)
+        self.journey_validator = UserJourneyValidator(project_root)
+        self.consistency_validator = IntegrationConsistencyValidator(project_root)
+    
+    def validate_basic_requirements(self) -> Dict[str, bool]:
+        """Validate basic E2E requirements (evidence log, main.py execution)."""
+        results = {}
+        
+        # Check for evidence log
+        evidence_files = list(self.project_root.rglob("**/*e2e_evidence.log"))
+        results["evidence_log_exists"] = len(evidence_files) > 0
+        
+        # Check main.py exists and is executable
+        main_py = self.project_root / "main.py"
+        results["main_py_exists"] = main_py.exists()
+        
+        if main_py.exists():
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["python", "main.py", "--help"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    timeout=30
+                )
+                results["main_py_executable"] = result.returncode == 0
+            except Exception:
+                results["main_py_executable"] = False
+        else:
+            results["main_py_executable"] = False
+        
+        return results
+    
+    def validate_user_journeys(self) -> Dict[str, bool]:
+        """Validate user journey workflows."""
+        return self.journey_validator.validate_all_journeys()
+    
+    def validate_integration_consistency(self) -> Dict[str, any]:
+        """Validate integration consistency between commands."""
+        return self.consistency_validator.validate_consistency()
+    
+    def validate_all(self) -> Tuple[bool, Dict[str, any]]:
+        """Perform comprehensive E2E validation."""
+        # Basic requirements
+        basic_results = self.validate_basic_requirements()
+        basic_success = all(basic_results.values())
+        
+        # User journey validation
+        journey_results = self.validate_user_journeys()
+        journey_success = all(journey_results.values())
+        
+        # Integration consistency validation
+        consistency_results = self.validate_integration_consistency()
+        consistency_success = consistency_results.get("success", False)
+        
+        # Overall success
+        overall_success = basic_success and journey_success and consistency_success
+        
+        # Detailed results
+        detailed_results = {
+            "overall_success": overall_success,
+            "basic_requirements": {
+                "success": basic_success,
+                "details": basic_results
+            },
+            "user_journeys": {
+                "success": journey_success,
+                "details": journey_results
+            },
+            "integration_consistency": {
+                "success": consistency_success,
+                "details": consistency_results
+            }
+        }
+        
+        # Log results
+        if not overall_success:
+            self.logger.error("Enhanced E2E validation failed:")
+            if not basic_success:
+                self.logger.error(f"  Basic requirements: {basic_results}")
+            if not journey_success:
+                failed_journeys = [k for k, v in journey_results.items() if not v]
+                self.logger.error(f"  Failed journeys: {failed_journeys}")
+            if not consistency_success:
+                self.logger.error(f"  Consistency issues: {consistency_results.get('inconsistencies', 0)}")
+        
+        return overall_success, detailed_results
+```
+
+#### 4. Integration Instructions for `src/phase_orchestrator.py`
+
+Add this import at the top of `src/phase_orchestrator.py`:
+
+```python
+from .enhanced_e2e_validator import EnhancedE2EValidator
+```
+
+Replace the existing E2E validation logic (around line 400-450) with:
+
+```python
+elif phase.name == "e2e":
+    # Enhanced E2E validation with user journey testing
+    validator = EnhancedE2EValidator(Path.cwd())
+    success, detailed_results = validator.validate_all()
+    
+    if success:
+        self.logger.info("Enhanced E2E validation passed")
+        phase.status = "completed"
+    else:
+        error_msg = "Enhanced E2E validation failed:\n"
+        if not detailed_results["basic_requirements"]["success"]:
+            error_msg += f"Basic requirements: {detailed_results['basic_requirements']['details']}\n"
+        if not detailed_results["user_journeys"]["success"]:
+            failed_journeys = [k for k, v in detailed_results['user_journeys']['details'].items() if not v]
+            error_msg += f"Failed user journeys: {failed_journeys}\n"
+        if not detailed_results["integration_consistency"]["success"]:
+            issues = detailed_results['integration_consistency']['details'].get('issues', [])
+            error_msg += f"Integration issues: {[issue['issue'] for issue in issues]}\n"
+        
+        phase.status = "failed"
+        phase.error = error_msg
+        self.logger.error(error_msg)
+```
+
+#### 5. Implementation Checklist
+
+To implement these enhancements:
+
+1. **Create the three new validator files** in `src/` directory
+2. **Update `src/phase_orchestrator.py`** with the new E2E validation logic
+3. **Test the implementation** by running a project through the E2E phase
+4. **Verify** that user journeys are tested and integration inconsistencies are caught
+
+This implementation will catch integration failures like the fetch→analyze bug during the E2E phase rather than leaving them for users to discover.

@@ -130,7 +130,8 @@ Environment Variables:
         
         try:
             # V4 uses async execution
-            return asyncio.run(orchestrator.run())
+            success = asyncio.run(orchestrator.run())
+            return 0 if success else 1
         except KeyboardInterrupt:
             print("\n\nExecution interrupted by user.")
             print("You can resume with: python cli.py --v4 --resume")

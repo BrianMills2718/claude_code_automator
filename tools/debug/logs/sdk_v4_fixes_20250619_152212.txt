@@ -1,0 +1,23 @@
+2025-06-19 15:22:12,883 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_152212.txt
+2025-06-19 15:22:12,883 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750371732883
+2025-06-19 15:23:00,968 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750371732883: module 'asyncio' has no attribute 'timeout'
+2025-06-19 15:23:00,968 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750371732883 cleaned up successfully
+2025-06-19 15:23:02,973 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 15:23:02,974 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750371782974
+2025-06-19 15:23:11,495 - src.claude_code_sdk_fixed_v4 - ERROR - 🚨 Error in managed context (session: session_1750371782974): ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+2025-06-19 15:23:11,495 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750371782974: module 'asyncio' has no attribute 'timeout'
+2025-06-19 15:23:11,495 - src.claude_code_sdk_fixed_v4 - ERROR - 🔍 Error analysis for session session_1750371782974: {'timestamp': 1750371791.495442, 'session_id': 'session_1750371782974', 'error_type': 'ExceptionGroup', 'error_message': 'unhandled errors in a TaskGroup (1 sub-exception)', 'is_taskgroup_related': True, 'is_cancel_scope_error': False, 'is_cost_parsing_error': False, 'is_cancellation_error': False}
+2025-06-19 15:23:11,495 - src.claude_code_sdk_fixed_v4 - INFO - 📝 Error analysis saved to: /home/brian/cc_automator4/tools/debug/logs/error_analysis_session_1750371782974.json
+2025-06-19 15:23:11,495 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750371782974 cleaned up successfully
+2025-06-19 15:23:11,499 - src.v4_meta_orchestrator - INFO - Milestone 1 has 3 evidence files
+2025-06-19 15:23:11,499 - src.v4_meta_orchestrator - INFO - Milestone 1 completed successfully
+2025-06-19 15:23:11,499 - src.v4_meta_orchestrator - INFO - Starting milestone 2: Technical Analysis Engine
+2025-06-19 15:23:11,499 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 15:23:11,499 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 15:23:11,499 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 15:23:12,119 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 15:23:12,121 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750371792121
+2025-06-19 15:24:01,760 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750371792121: module 'asyncio' has no attribute 'timeout'
+2025-06-19 15:24:01,760 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750371792121 cleaned up successfully
+2025-06-19 15:24:03,765 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 15:24:03,767 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750371843767

@@ -1,0 +1,25 @@
+{
+  "session_id": "20250619_142623",
+  "project_path": "/home/brian/cc_automator4/example_projects/ml_portfolio_analyzer",
+  "config": {
+    "max_attempts": 1,
+    "timeout": 60,
+    "retry_delay": 30,
+    "continuous": false
+  },
+  "start_time": "2025-06-19T14:26:23.568181",
+  "results": [
+    {
+      "attempt": 1,
+      "start_time": "2025-06-19T14:26:23.568231",
+      "end_time": "2025-06-19T14:27:26.186446",
+      "success": false,
+      "execution_time": 60,
+      "error": "Timeout after 60s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    }
+  ]
+}

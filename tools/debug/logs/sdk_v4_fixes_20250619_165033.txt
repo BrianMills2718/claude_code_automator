@@ -1,0 +1,36 @@
+2025-06-19 16:50:33,077 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_165033.txt
+2025-06-19 16:50:33,077 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750377033077
+2025-06-19 16:50:34,834 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750377033077: module 'asyncio' has no attribute 'timeout'
+2025-06-19 16:50:34,834 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750377033077 cleaned up successfully
+2025-06-19 16:50:34,839 - src.v4_meta_orchestrator - INFO - Milestone 1 has 1 evidence files
+2025-06-19 16:50:34,839 - src.v4_meta_orchestrator - INFO - Milestone 1 completed successfully
+2025-06-19 16:50:34,839 - src.v4_meta_orchestrator - INFO - Starting milestone 2: Technical Analysis Engine
+2025-06-19 16:50:34,839 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 16:50:34,839 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 16:50:34,839 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 16:50:35,417 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 16:50:35,418 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750377035418
+2025-06-19 16:50:37,382 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750377035418: module 'asyncio' has no attribute 'timeout'
+2025-06-19 16:50:37,382 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750377035418 cleaned up successfully
+2025-06-19 16:50:37,386 - src.v4_meta_orchestrator - INFO - Milestone 2 has 14 evidence files
+2025-06-19 16:50:37,386 - src.v4_meta_orchestrator - INFO - Milestone 2 completed successfully
+2025-06-19 16:50:37,386 - src.v4_meta_orchestrator - INFO - Starting milestone 3: ML Risk Assessment System
+2025-06-19 16:50:37,387 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 16:50:37,387 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 16:50:37,387 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 16:50:37,969 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 16:50:37,971 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750377037971
+2025-06-19 16:50:39,673 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750377037971: module 'asyncio' has no attribute 'timeout'
+2025-06-19 16:50:39,673 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750377037971 cleaned up successfully
+2025-06-19 16:50:39,677 - src.v4_meta_orchestrator - INFO - Milestone 3 has 12 evidence files
+2025-06-19 16:50:39,677 - src.v4_meta_orchestrator - INFO - Milestone 3 completed successfully
+2025-06-19 16:50:39,677 - src.v4_meta_orchestrator - INFO - Starting milestone 4: Web Dashboard and API
+2025-06-19 16:50:39,677 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 16:50:39,677 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 16:50:39,677 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 16:50:40,257 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 16:50:40,258 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750377040258
+2025-06-19 16:50:42,195 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750377040258: module 'asyncio' has no attribute 'timeout'
+2025-06-19 16:50:42,195 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750377040258 cleaned up successfully
+2025-06-19 16:50:42,199 - src.v4_meta_orchestrator - INFO - Milestone 4 has 7 evidence files
+2025-06-19 16:50:42,200 - src.v4_meta_orchestrator - INFO - Milestone 4 completed successfully

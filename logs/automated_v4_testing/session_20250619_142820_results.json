@@ -1,0 +1,37 @@
+{
+  "session_id": "20250619_142820",
+  "project_path": "/home/brian/cc_automator4/example_projects/ml_portfolio_analyzer",
+  "config": {
+    "max_attempts": 10,
+    "timeout": 300,
+    "retry_delay": 60,
+    "continuous": true
+  },
+  "start_time": "2025-06-19T14:28:20.943460",
+  "results": [
+    {
+      "attempt": 1,
+      "start_time": "2025-06-19T14:28:20.943523",
+      "end_time": "2025-06-19T14:33:33.779055",
+      "success": false,
+      "execution_time": 300,
+      "error": "Timeout after 300s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    },
+    {
+      "attempt": 2,
+      "start_time": "2025-06-19T14:34:36.427992",
+      "end_time": "2025-06-19T14:39:48.783968",
+      "success": false,
+      "execution_time": 300,
+      "error": "Timeout after 300s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+2025-06-19 17:13:53,227 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_171353.txt
+2025-06-19 17:13:53,227 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378433227
+2025-06-19 17:14:08,966 - src.claude_code_sdk_fixed_v4 - ERROR - 🚨 Error in managed context (session: session_1750378433227): ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+2025-06-19 17:14:08,966 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750378433227: module 'asyncio' has no attribute 'timeout'
+2025-06-19 17:14:08,966 - src.claude_code_sdk_fixed_v4 - ERROR - 🔍 Error analysis for session session_1750378433227: {'timestamp': 1750378448.966663, 'session_id': 'session_1750378433227', 'error_type': 'ExceptionGroup', 'error_message': 'unhandled errors in a TaskGroup (1 sub-exception)', 'is_taskgroup_related': True, 'is_cancel_scope_error': False, 'is_cost_parsing_error': False, 'is_cancellation_error': False}
+2025-06-19 17:14:08,966 - src.claude_code_sdk_fixed_v4 - INFO - 📝 Error analysis saved to: /home/brian/cc_automator4/tools/debug/logs/error_analysis_session_1750378433227.json
+2025-06-19 17:14:08,966 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750378433227 cleaned up successfully
+2025-06-19 17:14:08,971 - src.v4_meta_orchestrator - INFO - Milestone 1 has 1 evidence files
+2025-06-19 17:14:08,971 - src.v4_meta_orchestrator - INFO - Milestone 1 completed successfully
+2025-06-19 17:14:08,971 - src.v4_meta_orchestrator - INFO - Starting milestone 2: Technical Analysis Engine
+2025-06-19 17:14:08,971 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 17:14:08,971 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 17:14:08,971 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 17:14:09,589 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 17:14:09,591 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378449591
+2025-06-19 17:14:36,375 - src.claude_code_sdk_fixed_v4 - ERROR - 🚨 Error in managed context (session: session_1750378449591): ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+2025-06-19 17:14:36,376 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750378449591: module 'asyncio' has no attribute 'timeout'
+2025-06-19 17:14:36,376 - src.claude_code_sdk_fixed_v4 - ERROR - 🔍 Error analysis for session session_1750378449591: {'timestamp': 1750378476.3761687, 'session_id': 'session_1750378449591', 'error_type': 'ExceptionGroup', 'error_message': 'unhandled errors in a TaskGroup (1 sub-exception)', 'is_taskgroup_related': True, 'is_cancel_scope_error': False, 'is_cost_parsing_error': False, 'is_cancellation_error': False}
+2025-06-19 17:14:36,376 - src.claude_code_sdk_fixed_v4 - INFO - 📝 Error analysis saved to: /home/brian/cc_automator4/tools/debug/logs/error_analysis_session_1750378449591.json
+2025-06-19 17:14:36,376 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750378449591 cleaned up successfully
+2025-06-19 17:14:36,380 - src.v4_meta_orchestrator - INFO - Milestone 2 has 14 evidence files
+2025-06-19 17:14:36,381 - src.v4_meta_orchestrator - INFO - Milestone 2 completed successfully
+2025-06-19 17:14:36,381 - src.v4_meta_orchestrator - INFO - Starting milestone 3: ML Risk Assessment System
+2025-06-19 17:14:36,381 - src.v4_strategy_manager - INFO - Selecting strategy for web_app project with complexity 0.81
+2025-06-19 17:14:36,381 - src.v4_strategy_manager - INFO - Starting iterative refinement strategy with focus on: ['research', 'planning', 'architecture']
+2025-06-19 17:14:36,381 - src.v4_strategy_manager - INFO - Executing full V3 pipeline (iterative refinement not fully implemented yet)
+2025-06-19 17:14:36,975 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 17:14:36,977 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378476977

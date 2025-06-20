@@ -2442,84 +2442,40 @@ Be thorough, complete, and anticipate what downstream phases will need from your
                 return False
             
         elif phase.name == "e2e":
-            # Check if e2e evidence log was created AND main.py runs successfully
+            # Enhanced E2E validation with user journey testing
+            from .enhanced_e2e_validator import EnhancedE2EValidator
+            
             milestone_num = getattr(self, 'current_milestone', 1)
-            milestone_dir = self.working_dir / ".cc_automator/milestones" / f"milestone_{milestone_num}"
+            validator = EnhancedE2EValidator(
+                working_dir=self.working_dir,
+                milestone_num=milestone_num,
+                verbose=self.verbose
+            )
             
-            # STRICT: Evidence log is REQUIRED - no exceptions
-            # This is exactly what prevents Claude from cheating
-            e2e_files = list(milestone_dir.glob("*e2e*.log")) + list(milestone_dir.glob("*evidence*.log"))
-            if not e2e_files:
-                if self.verbose:
-                    print(f"E2E validation failed: no evidence log found in {milestone_dir}")
-                    print("E2E phase must create e2e_evidence.log as proof of testing")
-                return False
+            # Run all validations
+            success, results = validator.validate_all()
             
-            # Evidence log exists - now verify main.py actually works
-            main_py = self.working_dir / "main.py"
-            if not main_py.exists():
-                if self.verbose:
-                    print(f"E2E validation failed: main.py not found")
-                return False
-                
-            # Check if it's interactive and test accordingly
-            content = main_py.read_text()
-            is_interactive = 'input(' in content or 'raw_input(' in content
-            
-            try:
-                if is_interactive:
-                    # For interactive programs, try common exit patterns
-                    if self.verbose:
-                        print("E2E: Detected interactive program, trying common exit patterns")
-                    
-                    exit_patterns = ["q\n", "exit\n", "8\n", "0\n", "\n"]
-                    success = False
-                    
-                    for test_input in exit_patterns:
-                        try:
-                            result = subprocess.run(
-                                ["python", "main.py"],
-                                input=test_input,
-                                capture_output=True,
-                                text=True,
-                                cwd=str(self.working_dir),
-                                timeout=10
-                            )
-                            if result.returncode == 0:
-                                if self.verbose:
-                                    print(f"E2E: Success with input: {repr(test_input.strip())}")
-                                success = True
-                                break
-                        except subprocess.TimeoutExpired:
-                            continue
-                    
-                    if not success:
-                        if self.verbose:
-                            print("E2E validation failed: main.py interactive program doesn't exit cleanly")
-                        return False
+            if self.verbose:
+                print("\n=== Enhanced E2E Validation Results ===")
+                print(f"Basic Requirements: {'✅ PASSED' if results['basic_requirements']['success'] else '❌ FAILED'}")
+                if not results['basic_requirements']['success']:
+                    for error in results['basic_requirements']['errors']:
+                        print(f"  - {error}")
                         
-                else:
-                    # Non-interactive, run directly
-                    if self.verbose:
-                        print("E2E: Running non-interactive program")
-                    result = subprocess.run(
-                        ["python", "main.py"],
-                        capture_output=True,
-                        text=True,
-                        cwd=str(self.working_dir),
-                        timeout=10
-                    )
-                    if result.returncode != 0:
-                        if self.verbose:
-                            print(f"E2E validation failed: main.py exited with code {result.returncode}")
-                        return False
+                print(f"Main.py Execution: {'✅ PASSED' if results['main_py_execution']['success'] else '❌ FAILED'}")
+                if not results['main_py_execution']['success']:
+                    for error in results['main_py_execution']['errors']:
+                        print(f"  - {error}")
                         
-            except Exception as e:
-                if self.verbose:
-                    print(f"E2E validation error: {e}")
-                return False
-                
-            return True
+                print(f"User Journeys: {'✅ PASSED' if results['user_journeys']['success'] else '❌ FAILED'}")
+                for journey in results['user_journeys']['results']:
+                    status = '✅' if journey['success'] else '❌'
+                    print(f"  {status} {journey['name']}")
+                    if not journey['success']:
+                        for error in journey['errors']:
+                            print(f"    - {error}")
+                            
+            return success
             
         elif phase.name == "validate":
             # Enhanced validation with multiple checks and better error reporting

@@ -1,0 +1,38 @@
+{
+  "session_summary": {
+    "session_id": "20250619_142820",
+    "total_time": "0:11:27.840699",
+    "total_attempts": 2,
+    "successful_attempts": 0,
+    "success_rate": 0.0,
+    "common_issues": {
+      "Unknown": 2
+    }
+  },
+  "detailed_results": [
+    {
+      "attempt": 1,
+      "start_time": "2025-06-19T14:28:20.943523",
+      "end_time": "2025-06-19T14:33:33.779055",
+      "success": false,
+      "execution_time": 300,
+      "error": "Timeout after 300s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    },
+    {
+      "attempt": 2,
+      "start_time": "2025-06-19T14:34:36.427992",
+      "end_time": "2025-06-19T14:39:48.783968",
+      "success": false,
+      "execution_time": 300,
+      "error": "Timeout after 300s",
+      "analysis": {
+        "timeout": true
+      },
+      "returncode": null
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "timestamp": 1750378026.848234,
+  "session_id": "session_1750378020381",
+  "error_type": "ExceptionGroup",
+  "error_message": "unhandled errors in a TaskGroup (1 sub-exception)",
+  "is_taskgroup_related": true,
+  "is_cancel_scope_error": false,
+  "is_cost_parsing_error": false,
+  "is_cancellation_error": false
+}

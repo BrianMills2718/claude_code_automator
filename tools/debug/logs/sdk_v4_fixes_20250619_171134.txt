@@ -1,0 +1,6 @@
+2025-06-19 17:11:34,203 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_171134.txt
+2025-06-19 17:11:34,203 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378294203
+2025-06-19 17:13:02,238 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750378294203: module 'asyncio' has no attribute 'timeout'
+2025-06-19 17:13:02,238 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750378294203 cleaned up successfully
+2025-06-19 17:13:04,244 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 17:13:04,246 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378384246
