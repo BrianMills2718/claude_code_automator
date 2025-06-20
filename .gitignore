@@ -89,4 +89,4 @@ build/
 Thumbs.db
 
 # Claude specific
-.claude/
+.claude/docs/planning/archive/

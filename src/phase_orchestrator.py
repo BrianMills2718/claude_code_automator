@@ -18,39 +18,36 @@ import asyncio
 import anyio
 import psutil  # For resource monitoring
 from .memory_manager import create_memory_manager
-# Use V4 SDK wrapper with ACTUAL TaskGroup fixes (not masking)
+# Use STABLE SDK wrapper with comprehensive fixes
 try:
-    from .claude_code_sdk_fixed_v4 import query_v4_fixed as query_v3, ClaudeCodeOptions, get_v4_fixed_wrapper
-    # V4 SDK re-exports everything from original SDK including Message
+    from .claude_code_sdk_stable import stable_query as query, ClaudeCodeOptions
     from claude_code_sdk import Message
-    print("✅ Using V4 SDK wrapper (ACTUAL TaskGroup cleanup fixes)")
-    V3_SDK_AVAILABLE = True
-    V4_SDK_INTEGRATED = True
+    print("✅ Using STABLE SDK wrapper (comprehensive fixes)")
+    STABLE_SDK_AVAILABLE = True
 except ImportError:
     try:
-        # Fallback to V3 wrapper with error masking
-        from .claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
-        print("⚠️  Fallback to V3 SDK wrapper (error masking, not ideal)")
-        V3_SDK_AVAILABLE = True
-        V4_SDK_INTEGRATED = False
+        # Fallback to V4 wrapper  
+        from .claude_code_sdk_fixed_v4 import query_v4_fixed as query, ClaudeCodeOptions, get_v4_fixed_wrapper
+        from claude_code_sdk import Message
+        print("⚠️  Fallback to V4 SDK wrapper")
+        STABLE_SDK_AVAILABLE = False
     except ImportError:
         try:
-            # Try absolute import for V3
-            from claude_code_sdk_fixed_v3 import query_v3, ClaudeCodeOptions, Message, get_v3_wrapper
-            print("⚠️  Using V3 SDK wrapper via absolute import (error masking)")
-            V3_SDK_AVAILABLE = True
-            V4_SDK_INTEGRATED = False
+            # Fallback to V3 wrapper
+            from .claude_code_sdk_fixed_v3 import query_v3 as query, ClaudeCodeOptions, Message, get_v3_wrapper
+            print("⚠️  Fallback to V3 SDK wrapper")
+            STABLE_SDK_AVAILABLE = False
         except ImportError:
             try:
+                # Fallback to V2 wrapper
                 from .claude_code_sdk_fixed_v2 import query, ClaudeCodeOptions, Message
-                print("⚠️  Fallback to V2 SDK wrapper (TaskGroup issues remain)")
-                V3_SDK_AVAILABLE = False
-                V4_SDK_INTEGRATED = False
+                print("⚠️  Fallback to V2 SDK wrapper")
+                STABLE_SDK_AVAILABLE = False
             except ImportError:
+                # Last resort: original SDK
                 from claude_code_sdk import query, ClaudeCodeOptions, Message
                 print("⚠️  Using original SDK (may encounter errors)")
-                V3_SDK_AVAILABLE = False
-                V4_SDK_INTEGRATED = False
+                STABLE_SDK_AVAILABLE = False
 
 
 class PhaseStatus(Enum):
@@ -93,40 +90,157 @@ class StreamingJSONProcessor:
         self.current_session_id = None
         self.final_result = None
         self.max_messages = max_messages
+        self.buffer = ""  # Buffer for incomplete JSON fragments
         
     def process_line(self, line: str) -> Optional[Dict[str, Any]]:
-        """Process a single line of streaming JSON output"""
-        if not line.strip():
+        """Process a line of streaming output, handling fragmented JSON"""
+        if not line:
             return None
             
+        # Add line to buffer
+        self.buffer += line
+        
+        # Try to extract complete JSON objects from buffer
+        return self._extract_json_from_buffer()
+    
+    def _extract_json_from_buffer(self) -> Optional[Dict[str, Any]]:
+        """Extract complete JSON objects from the buffer"""
+        # Claude Code outputs newline-delimited JSON, so look for complete lines
+        while '\n' in self.buffer:
+            # Extract one line at a time
+            line, self.buffer = self.buffer.split('\n', 1)
+            
+            if not line.strip():
+                continue
+                
+            try:
+                # Try to parse the line as JSON
+                event = json.loads(line)
+                
+                # Track session ID from init message
+                if event.get("type") == "system" and event.get("subtype") == "init":
+                    self.current_session_id = event.get("session_id")
+                    
+                # Collect messages with limit to prevent memory leaks
+                self.messages.append(event)
+                
+                # Keep only recent messages to prevent memory leaks in infinite mode
+                if len(self.messages) > self.max_messages:
+                    self.messages = self.messages[-self.max_messages//2:]
+                
+                # Capture final result
+                if event.get("type") == "result":
+                    self.final_result = event
+                    
+                return event
+                
+            except json.JSONDecodeError as e:
+                # This line might be incomplete JSON that spans multiple lines
+                # Put it back in the buffer with the rest
+                self.buffer = line + '\n' + self.buffer
+                
+                # Check if we have a complete JSON object by counting braces
+                if self._is_potentially_complete_json(self.buffer):
+                    try:
+                        # Try to parse the entire buffer as one JSON object
+                        event = json.loads(self.buffer)
+                        self.buffer = ""  # Clear buffer on success
+                        
+                        # Process the event
+                        if event.get("type") == "system" and event.get("subtype") == "init":
+                            self.current_session_id = event.get("session_id")
+                        self.messages.append(event)
+                        if len(self.messages) > self.max_messages:
+                            self.messages = self.messages[-self.max_messages//2:]
+                        if event.get("type") == "result":
+                            self.final_result = event
+                            
+                        return event
+                        
+                    except json.JSONDecodeError:
+                        # Still not valid JSON, might need more data
+                        if len(self.buffer) > 50000:  # Prevent unbounded growth
+                            print(f"⚠️  Buffer too large ({len(self.buffer)} chars), attempting repair...")
+                            return self._handle_buffer_overflow()
+                
+                # Buffer doesn't look complete yet, wait for more data
+                return None
+                
+        return None
+    
+    def _is_potentially_complete_json(self, text: str) -> bool:
+        """Check if text might be a complete JSON object"""
+        # Simple heuristic: balanced braces and brackets
+        return (text.count('{') == text.count('}') and 
+                text.count('[') == text.count(']') and
+                text.count('"') % 2 == 0)
+    
+    def _handle_buffer_overflow(self) -> Optional[Dict[str, Any]]:
+        """Handle case where buffer grows too large"""
+        # Try to repair and parse what we have
         try:
-            event = json.loads(line)
-            
-            # Track session ID from init message
-            if event.get("type") == "system" and event.get("subtype") == "init":
-                self.current_session_id = event.get("session_id")
-                
-            # Collect messages with limit to prevent memory leaks
-            self.messages.append(event)
-            
-            # Keep only recent messages to prevent memory leaks in infinite mode
-            if len(self.messages) > self.max_messages:
-                self.messages = self.messages[-self.max_messages//2:]  # Keep last half
-            
-            # Capture final result
-            if event.get("type") == "result":
-                self.final_result = event
-                
+            repaired = self._repair_truncated_json(self.buffer)
+            event = json.loads(repaired)
+            self.buffer = ""  # Clear buffer
+            print(f"✅ Successfully repaired large buffer")
             return event
-            
-        except json.JSONDecodeError as e:
-            print(f"Failed to parse JSON: {line}")
+        except json.JSONDecodeError:
+            # Log the error
+            print(f"❌ Failed to parse buffer even after repair: {self.buffer[:200]}...")
+            self._log_json_error(self.buffer)
+            self.buffer = ""  # Clear buffer to prevent infinite growth
             return None
     
+    def _log_json_error(self, content: str):
+        """Log JSON parsing errors for debugging"""
+        error_details = {
+            "timestamp": time.time(),
+            "session_id": self.current_session_id or "unknown",
+            "error_type": "CLIJSONDecodeError", 
+            "error_message": f"Failed to decode JSON: {content[:200]}...",
+            "content_length": len(content),
+            "is_taskgroup_related": "taskgroup" in content.lower(),
+            "is_cancel_scope_error": "cancel" in content.lower(),
+            "is_cost_parsing_error": "cost" in content.lower(),
+            "is_cancellation_error": "cancellation" in content.lower()
+        }
+        
+        # Save error details for debugging
+        debug_dir = Path(__file__).parent.parent / "tools" / "debug" / "logs"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        error_file = debug_dir / f"error_analysis_session_{int(time.time() * 1000)}.json"
+        
+        try:
+            with open(error_file, 'w') as f:
+                json.dump(error_details, f, indent=2)
+        except Exception:
+            pass  # Don't let logging errors break execution
+    
+    def _repair_truncated_json(self, truncated_json: str) -> str:
+        """Attempt to repair truncated JSON strings using same logic as stable SDK"""
+        
+        # Common truncation patterns
+        if truncated_json.endswith('...'):
+            # Remove truncation indicator
+            truncated_json = truncated_json[:-3]
+        
+        # Try to complete common JSON structures
+        if truncated_json.count('"') % 2 == 1:
+            truncated_json += '"'
+        
+        if truncated_json.count('{') > truncated_json.count('}'):
+            truncated_json += '}' * (truncated_json.count('{') - truncated_json.count('}'))
+        
+        if truncated_json.count('[') > truncated_json.count(']'):
+            truncated_json += ']' * (truncated_json.count('[') - truncated_json.count(']'))
+        
+        return truncated_json
+
     def cleanup(self):
         """Clean up memory to prevent leaks"""
         self.messages.clear()
         self.final_result = None
+        self.buffer = ""
 
 
 class PhaseOrchestrator:
@@ -188,9 +302,16 @@ class PhaseOrchestrator:
         phase.status = PhaseStatus.RUNNING
         phase.start_time = datetime.now()
         
+        # Force async execution only if explicitly requested via environment variable
+        force_async = os.environ.get('FORCE_ASYNC_EXECUTION', 'false').lower() == 'true'
+        
+        if force_async:
+            print(f"🔄 Using async execution mode for {phase.name}")
+            return self._execute_async(phase)
+        
         # V3 Pure SDK execution
         try:
-            if V3_SDK_AVAILABLE:
+            if STABLE_SDK_AVAILABLE:
                 print(f"🚀 V3 Pure SDK execution for {phase.name}")
                 return anyio.run(self._execute_with_sdk, phase)
             else:
@@ -198,7 +319,7 @@ class PhaseOrchestrator:
                 return anyio.run(self._execute_with_sdk, phase)
         except Exception as e:
             # V3 should handle TaskGroup issues internally, any exceptions here are real errors
-            if V3_SDK_AVAILABLE:
+            if STABLE_SDK_AVAILABLE:
                 print(f"❌ V3 SDK execution failed for {phase.name}: {str(e)}")
                 # Check if work was actually completed despite the error
                 if phase.status == PhaseStatus.COMPLETED:
@@ -327,7 +448,8 @@ Write to it: PHASE_COMPLETE"""
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL if not self.verbose else subprocess.PIPE,
                 text=True,
-                cwd=str(self.working_dir)
+                cwd=str(self.working_dir),
+                bufsize=-1  # Use default system buffer to handle large JSON lines
             )
             
             # Check for immediate errors
@@ -364,21 +486,62 @@ Write to it: PHASE_COMPLETE"""
                 while True:
                     ready, _, _ = select.select([process.stdout], [], [], 0.1)
                     if ready:
-                        line = process.stdout.readline()
-                        if line:
-                            log_handle.write(line)
-                            log_handle.flush()
+                        # Read available data without blocking
+                        try:
+                            # Set non-blocking mode and read what's available
+                            import fcntl, os
+                            fd = process.stdout.fileno()
+                            flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+                            fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
                             
-                            # Process streaming JSON
-                            event = stream_processor.process_line(line)
-                            if event and self.verbose:
-                                if event.get("type") == "tool_use":
-                                    print(f"  Tool: {event.get('name')} - {event.get('parameters', {})}")
-                                elif event.get("type") == "tool_result":
-                                    result_preview = str(event.get('output', ''))[:100]
-                                    if len(str(event.get('output', ''))) > 100:
-                                        result_preview += "..."
-                                    print(f"  Result: {result_preview}")
+                            # Read all available data
+                            data = ""
+                            while True:
+                                try:
+                                    chunk = process.stdout.read(4096)
+                                    if not chunk:
+                                        break
+                                    data += chunk
+                                except BlockingIOError:
+                                    break
+                            
+                            # Restore blocking mode
+                            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+                            
+                            if data:
+                                log_handle.write(data)
+                                log_handle.flush()
+                                
+                                # Process complete lines
+                                lines = data.split('\n')
+                                for i, line in enumerate(lines):
+                                    # Last element might be incomplete if no trailing newline
+                                    if i == len(lines) - 1 and not data.endswith('\n'):
+                                        # This is a partial line, add it to the buffer
+                                        stream_processor.buffer = line + stream_processor.buffer
+                                    elif line:
+                                        # Complete line, process it
+                                        event = stream_processor.process_line(line + '\n')
+                                        if event and self.verbose:
+                                            if event.get("type") == "tool_use":
+                                                print(f"  Tool: {event.get('name')} - {event.get('parameters', {})}")
+                                            elif event.get("type") == "tool_result":
+                                                result_preview = str(event.get('output', ''))[:100]
+                                                if len(str(event.get('output', ''))) > 100:
+                                                    result_preview += "..."
+                                                print(f"  Result: {result_preview}")
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"Warning: Error reading subprocess output: {e}")
+                            # Fall back to readline() if non-blocking fails
+                            line = process.stdout.readline()
+                            if line:
+                                log_handle.write(line)
+                                log_handle.flush()
+                                event = stream_processor.process_line(line)
+                                if event and self.verbose:
+                                    if event.get("type") == "tool_use":
+                                        print(f"  Tool: {event.get('name')} - {event.get('parameters', {})}")
                     else:
                         break
                 
@@ -519,13 +682,14 @@ Write to it: PHASE_COMPLETE"""
         """Execute query using V4/V3 wrapper if available, fallback to original SDK"""
         messages = []
         
-        if V3_SDK_AVAILABLE:
-            query_func = query_v3
+        if STABLE_SDK_AVAILABLE:
+            query_func = query
             # V4 SDK requires working_dir and verbose parameters
             query_args = (prompt, options, self.working_dir, self.verbose)
             
-            if self.verbose and 'V4_SDK_INTEGRATED' in globals() and V4_SDK_INTEGRATED:
-                print(f"🔧 Using V4 SDK with TaskGroup fixes for phase execution")
+            if self.verbose and STABLE_SDK_AVAILABLE:
+                print(f"🔧 Using STABLE SDK: {query_func.__module__}.{query_func.__name__}")
+                print(f"🔧 Args: {len(query_args)} arguments")
         else:
             query_func = query
             query_args = (prompt, options)
@@ -605,14 +769,16 @@ Write to it: PHASE_COMPLETE"""
         websearch_timeout_seconds = 30
         
         try:
-            # Execute query with V3 SDK wrapper or fallback to original
-            if V3_SDK_AVAILABLE:
-                query_func = query_v3
-                # V4/V3 SDK requires working_dir and verbose parameters
+            # Execute query with STABLE SDK wrapper or fallback to original
+            if STABLE_SDK_AVAILABLE:
+                query_func = query
+                # STABLE SDK requires working_dir and verbose parameters
                 query_args = (phase.prompt, options, self.working_dir, self.verbose)
+                print(f"DEBUG: Using {query_func.__module__}.{query_func.__name__} with {len(query_args)} args")
             else:
                 query_func = query
                 query_args = (phase.prompt, options)
+                print(f"DEBUG: Using fallback {query_func.__module__}.{query_func.__name__} with {len(query_args)} args")
             
             async for message in query_func(*query_args):
                 messages.append(message)
@@ -633,7 +799,7 @@ Write to it: PHASE_COMPLETE"""
                                 print(f"  🧹 Optimized messages: {len(optimized)} kept")
                 
                 # For V3, WebSearch timing is handled internally, for legacy we need to track it
-                if not V3_SDK_AVAILABLE:
+                if not STABLE_SDK_AVAILABLE:
                     # Track WebSearch timing for legacy SDK
                     if hasattr(message, 'content') and isinstance(message.content, list):
                         for item in message.content:
@@ -788,7 +954,7 @@ Write to it: PHASE_COMPLETE"""
                         
         except Exception as e:
             # V3 error handling - TaskGroup issues should be resolved
-            if V3_SDK_AVAILABLE:
+            if STABLE_SDK_AVAILABLE:
                 # With V3, TaskGroup errors should not occur
                 if "TaskGroup" in str(e):
                     print(f"⚠️  Unexpected TaskGroup error in V3 SDK: {str(e)}")
@@ -993,7 +1159,7 @@ Write to it: PHASE_COMPLETE"""
     def get_taskgroup_error_analysis(self) -> Dict[str, Any]:
         """Get TaskGroup error analysis from V3 SDK wrapper."""
         try:
-            if V3_SDK_AVAILABLE:
+            if STABLE_SDK_AVAILABLE:
                 wrapper = get_v3_wrapper(self.working_dir, self.verbose)
                 return wrapper.get_taskgroup_error_summary()
             else:

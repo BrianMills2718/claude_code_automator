@@ -35,7 +35,8 @@ from enum import Enum
 import claude_code_sdk
 from claude_code_sdk._internal.client import InternalClient
 from claude_code_sdk.types import ResultMessage
-from claude_code_sdk import ClaudeCodeOptions, query
+from claude_code_sdk import ClaudeCodeOptions
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -115,6 +116,12 @@ class StableSDKWrapper:
         Comprehensive message parser that handles all known error cases
         """
         try:
+            # Log data type for debugging
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"🔍 Parsing message type: {data.get('type', 'unknown')}")
+                if data.get("type") == "assistant" and isinstance(data.get("message"), str):
+                    logger.debug(f"🔍 Assistant message is string: {data['message'][:100]}...")
+            
             # Handle result messages with robust cost parsing
             if data.get("type") == "result":
                 return _stable_sdk._parse_result_message(data)
@@ -139,6 +146,7 @@ class StableSDKWrapper:
         except Exception as e:
             error_type = _stable_sdk._classify_error(e)
             logger.error(f"🚨 Message parsing failed: {error_type.value} - {str(e)}")
+            logger.error(f"🚨 Failed data: {str(data)[:500]}...")
             
             # Attempt recovery based on error type
             if error_type == SDKErrorType.JSON_DECODE_ERROR:
@@ -181,6 +189,29 @@ class StableSDKWrapper:
     def _parse_assistant_message(self, data: Dict[str, Any]):
         """Parse assistant messages that may have JSON decode issues"""
         
+        # Check if the entire data looks like a truncated JSON string
+        if isinstance(data, str) and data.startswith('{"type":"assistant"'):
+            logger.warning(f"⚠️ Received string instead of dict for assistant message: {data[:100]}...")
+            try:
+                # Try to parse it as JSON
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                # Try to repair and parse
+                logger.warning("⚠️ Attempting to repair truncated assistant message JSON")
+                try:
+                    repaired = self._repair_truncated_json(data)
+                    data = json.loads(repaired)
+                except json.JSONDecodeError as e:
+                    logger.error(f"❌ Failed to repair assistant message: {str(e)}")
+                    # Return a minimal valid message
+                    return {
+                        "type": "assistant",
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"type": "text", "text": "Error: Unable to parse assistant message"}]
+                        }
+                    }
+        
         # Check if message field has truncated JSON
         message = data.get("message", {})
         if isinstance(message, str):
@@ -188,8 +219,14 @@ class StableSDKWrapper:
             try:
                 message = json.loads(message)
             except json.JSONDecodeError:
-                logger.warning("⚠️ Truncated JSON in assistant message, attempting repair")
-                message = self._repair_truncated_json(message)
+                logger.warning("⚠️ Truncated JSON in assistant message field, attempting repair")
+                try:
+                    repaired_message = self._repair_truncated_json(message)
+                    message = json.loads(repaired_message)
+                except json.JSONDecodeError:
+                    # If repair fails, create a simple message structure
+                    logger.error("❌ Failed to repair message field")
+                    message = {"role": "assistant", "content": message}
         
         # The original parser expects message.content to be a list of content blocks
         # If we have a simple format, convert it to the expected format
@@ -212,7 +249,18 @@ class StableSDKWrapper:
         data["message"] = message
         
         # Use original parser with properly formatted data
-        return _stable_sdk._original_parse_message(None, data)
+        try:
+            return _stable_sdk._original_parse_message(None, data)
+        except Exception as e:
+            logger.error(f"❌ Original parser failed on repaired data: {str(e)}")
+            # Return a minimal valid assistant message
+            return {
+                "type": "assistant", 
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Error: Failed to parse assistant message"}]
+                }
+            }
     
     def _repair_truncated_json(self, truncated_json: str) -> Dict[str, Any]:
         """Attempt to repair truncated JSON strings"""
@@ -342,9 +390,29 @@ class StableSDKWrapper:
             logger.info(f"🚀 Executing query (session: {session_id})")
             
             try:
-                # Execute the query using the patched SDK
-                async for message in query(prompt, options):
-                    yield message
+                # Set environment variables to help with buffering
+                import os
+                os.environ['PYTHONUNBUFFERED'] = '1'
+                os.environ['PYTHONIOENCODING'] = 'utf-8'
+                
+                # Execute the query using the patched SDK (keyword-only arguments)
+                try:
+                    async for message in claude_code_sdk.query(prompt=prompt, options=options):
+                        yield message
+                except Exception as sdk_error:
+                    # If we get a JSON decode error, try one recovery attempt
+                    if "json" in str(sdk_error).lower() and "decode" in str(sdk_error).lower():
+                        logger.warning(f"🔄 SDK JSON error, attempting recovery: {str(sdk_error)[:200]}...")
+                        # Wait a moment and try again
+                        await asyncio.sleep(1)
+                        try:
+                            async for message in claude_code_sdk.query(prompt=prompt, options=options):
+                                yield message
+                        except Exception as retry_error:
+                            logger.error(f"🚨 Retry failed: {str(retry_error)[:200]}...")
+                            raise sdk_error  # Re-raise original error
+                    else:
+                        raise sdk_error
                     
             except Exception as e:
                 error_type = self._classify_error(e)
@@ -352,7 +420,13 @@ class StableSDKWrapper:
                 
                 # For critical errors, don't attempt recovery - fail fast
                 if error_type in [SDKErrorType.TASKGROUP_ERROR, SDKErrorType.JSON_DECODE_ERROR]:
-                    raise RuntimeError(f"Critical SDK error ({error_type.value}): {str(e)}")
+                    # Log more details about JSON decode errors
+                    if error_type == SDKErrorType.JSON_DECODE_ERROR:
+                        logger.error(f"🚨 JSON decode error details: {str(e)}")
+                        # Try to log what we were trying to parse (but limit length)
+                        import traceback
+                        logger.error(f"🚨 Traceback: {traceback.format_exc()}")
+                    raise RuntimeError(f"Critical SDK error ({error_type.value}): {str(e)[:200]}...")
                 
                 # For other errors, attempt limited recovery
                 yield {
@@ -408,10 +482,15 @@ class StableSDKWrapper:
 _stable_sdk = StableSDKWrapper()
 
 # Public API functions
-async def stable_query(prompt: str, options: Optional[ClaudeCodeOptions] = None) -> AsyncIterator[Dict[str, Any]]:
+async def stable_query(prompt: str, options: Optional[ClaudeCodeOptions] = None, working_dir=None, verbose=False) -> AsyncIterator[Dict[str, Any]]:
     """
     Execute a query using the stable SDK wrapper
+    Compatible with V4/V3 wrapper signatures that expect working_dir and verbose parameters.
     """
+    # Log compatibility parameters if provided
+    if working_dir and verbose:
+        logger.debug(f"🔧 Stable query called with working_dir: {working_dir}, verbose: {verbose}")
+    
     async for message in _stable_sdk.execute_query(prompt, options):
         yield message
 
@@ -423,5 +502,7 @@ def save_sdk_diagnostics(output_path: Path):
     """Save SDK diagnostics"""
     _stable_sdk.save_diagnostics(output_path)
 
-# Re-export necessary items from original SDK
+# Re-export necessary items from original SDK  
 from claude_code_sdk import ClaudeCodeOptions
+
+# No need for alias - phase orchestrator imports stable_query as query
