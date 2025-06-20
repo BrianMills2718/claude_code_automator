@@ -18,7 +18,7 @@ def create_simple_overnight():
     subprocess.run(['git', 'config', 'user.name', 'Test User'], cwd=project_dir, capture_output=True)
     
     # Create .env
-    (project_dir / ".env").write_text("OPENAI_API_KEY=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")
+    (project_dir / ".env").write_text("OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE")
     
     # Create simple CLAUDE.md with easier-to-test milestones
     claude_md = """# Text Processing Utilities

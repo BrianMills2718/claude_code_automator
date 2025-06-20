@@ -170,7 +170,7 @@ def run_cc_automator(project_dir: Path, with_api_key: bool = False) -> dict:
     
     env = os.environ.copy()
     if with_api_key:
-        env["OPENAI_API_KEY"] = "sk-proj-9kBFD5yC7e8Y5JjH_hX-5iI0ONUVY_QPfpQWNvUbAInLZe8R5kOe4qJo0B0T3BlbkJFYLJRKsLQT3BlbkFJR-aUfJKf1nS6L7sQKhBMzS3eF1wNhWLU8Xd4yJqX5g9pQr3vYzL8nA2f6wT9kR"
+        env["OPENAI_API_KEY"] = "YOUR_OPENAI_API_KEY_HERE"
     
     # Force non-interactive mode and auto-select Claude for LLM dependencies
     env["FORCE_NON_INTERACTIVE"] = "true"

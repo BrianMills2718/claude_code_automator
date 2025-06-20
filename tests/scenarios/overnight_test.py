@@ -24,7 +24,7 @@ def create_overnight_test():
     print("✅ Git repository initialized")
     
     # Create .env file with API key
-    env_content = """OPENAI_API_KEY=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"""
+    env_content = """OPENAI_API_KEY=YOUR_OPENAI_API_KEY_HERE"""
     (project_dir / ".env").write_text(env_content)
     
     # Create CLAUDE.md with 3 solid milestones

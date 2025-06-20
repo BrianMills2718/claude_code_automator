@@ -4,3 +4,7 @@
 2025-06-19 17:19:49,683 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750378707004 cleaned up successfully
 2025-06-19 17:19:53,540 - asyncio - DEBUG - Using selector: EpollSelector
 2025-06-19 17:19:53,542 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378793542
+2025-06-19 17:20:20,264 - src.claude_code_sdk_fixed_v4 - ERROR - 🔧 Cleanup error for session session_1750378793542: module 'asyncio' has no attribute 'timeout'
+2025-06-19 17:20:20,264 - src.claude_code_sdk_fixed_v4 - DEBUG - 🧹 Session session_1750378793542 cleaned up successfully
+2025-06-19 17:20:22,270 - asyncio - DEBUG - Using selector: EpollSelector
+2025-06-19 17:20:22,272 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750378822272
