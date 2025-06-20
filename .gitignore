@@ -9,31 +9,84 @@ env/
 ENV/
 .pytest_cache/
 
-# CC_AUTOMATOR generated files
+# CC_AUTOMATOR generated files and logs
 .cc_automator/
 */.cc_automator/
+*.log
+logs/
+*/logs/
 
-# Test outputs and development files  
-test_output/
+# Development and debug files - KEEP LOCAL ONLY
+tools/debug/
+tests/scenarios/
+tests/test_*.py
+**/test_*.py
+comprehensive_*.py
+final_*.py
+debug_*.py
 test_*.txt
 *.log
-test_*.py
-test_*/
+full_test_log.txt
+failure_patterns_analysis.json
+comprehensive_test_results.txt
 
-# IDE
+# Historical SDK versions - KEEP LOCAL ONLY  
+src/claude_code_sdk_fixed.py
+src/claude_code_sdk_fixed_v*.py
+src/claude_code_sdk_bypass.py
+src/claude_code_sdk_no_masking.py
+src/claude_code_sdk_v4_stable.py
+
+# Historical documentation - KEEP LOCAL ONLY
+docs/specifications/CC_AUTOMATOR_SPECIFICATION_v[123].md
+docs/specifications/CLAUDE_*.md
+docs/specifications/CONTEXT_SUMMARY.md
+docs/specifications/CURRENT_STATUS.md
+docs/specifications/HANDOFF.md
+docs/specifications/MVP_*.md
+docs/specifications/REFACTORING_PLAN.md
+docs/implementation/CHECKPOINT_*.md
+docs/implementation/INFINITE_MODE_*.md
+docs/implementation/V[234]_IMPLEMENTATION_*.md
+docs/implementation/configuration_risk_analysis.md
+docs/implementation/demo_output.md
+docs/implementation/infinite_mode_gaps.md
+docs/implementation/parallel_phase_execution_risks_analysis.md
+docs/implementation/sub_phase_proposal.md
+docs/implementation/summary_improvements.md
+docs/planning/v3_*.md
+docs/planning/v4_*.md
+docs/analysis/
+
+# Test projects and scenarios - KEEP LOCAL ONLY
+auto_doc_chatbot/
+auto_learning_system/
+auto_research_graphrag/
+graphrag_project/
+llm_test_learning/
+example_projects/*/data/
+example_projects/*/tools/
+example_projects/*/docs/
+example_projects/*/*.log
+example_projects/*/v4_execution.log
+example_projects/*/journey_test_report.md
+example_projects/*/test_*.py
+example_projects/*/test_*.json
+example_projects/*/monitor_*.sh
+example_projects/*/=*
+
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
+# IDE and OS  
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# OS
 .DS_Store
 Thumbs.db
 
 # Claude specific
-.claude/archive/
-__pycache__/
-logs/
-*.log
-test/
-sdk_test_simple/
+.claude/
