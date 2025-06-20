@@ -31,4 +31,9 @@ test_*/
 Thumbs.db
 
 # Claude specific
-.claude/
+.claude/archive/
+__pycache__/
+logs/
+*.log
+test/
+sdk_test_simple/
