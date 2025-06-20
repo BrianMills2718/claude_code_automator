@@ -33,10 +33,20 @@ async def test_consecutive_operations_mock(num_operations: int = 10):
                 # Simulate some processing
                 await asyncio.sleep(0.01)
                 
-                # Test basic session functionality
-                # Just verify the session is working properly
-                assert session_id.startswith("session_")
-                assert len(session_id) > 10
+                # Test message parsing with various types
+                test_messages = [
+                    {"type": "result", "cost_usd": 0.01 * (i+1)},
+                    {"type": "assistant", "message": {"role": "assistant", "content": f"Test {i}"}},
+                    {"type": "unknown", "random_field": f"test_{i}"}
+                ]
+                
+                # Test message parsing via the monkey-patched client
+                from claude_code_sdk._internal.client import InternalClient
+                client = InternalClient()
+                
+                for msg in test_messages:
+                    parsed = client._parse_message(msg)
+                    assert parsed is not None
                 
                 print(f"  ✅ Operation {i+1} completed successfully")
                 successes += 1

@@ -173,7 +173,7 @@ class StableSDKWrapper:
             is_error=data.get("is_error", False),
             num_turns=data.get("num_turns", 0),
             session_id=data.get("session_id", ""),
-            total_cost_usd=cost_value,  # Use same cost value for consistency
+            total_cost_usd=data.get("total_cost", cost_value),  # Use total_cost if available, else cost_value
             usage=data.get("usage"),
             result=data.get("result"),
         )
@@ -191,10 +191,27 @@ class StableSDKWrapper:
                 logger.warning("⚠️ Truncated JSON in assistant message, attempting repair")
                 message = self._repair_truncated_json(message)
         
-        # Update data with repaired message
+        # The original parser expects message.content to be a list of content blocks
+        # If we have a simple format, convert it to the expected format
+        if isinstance(message, dict) and "content" in message:
+            content = message["content"]
+            if isinstance(content, str):
+                # Convert simple string content to expected content block format
+                message["content"] = [{"type": "text", "text": content}]
+            elif isinstance(content, dict):
+                # If content is a dict but not a list, wrap it
+                message["content"] = [{"type": "text", "text": str(content)}]
+        elif isinstance(message, dict) and "role" in message:
+            # Handle simple {role: "assistant", content: "text"} format
+            content_text = message.get("content", "")
+            message = {
+                "content": [{"type": "text", "text": str(content_text)}]
+            }
+        
+        # Update data with properly formatted message
         data["message"] = message
         
-        # Use original parser  
+        # Use original parser with properly formatted data
         return _stable_sdk._original_parse_message(None, data)
     
     def _repair_truncated_json(self, truncated_json: str) -> Dict[str, Any]:
