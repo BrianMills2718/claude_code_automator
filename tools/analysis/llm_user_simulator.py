@@ -197,7 +197,7 @@ Stay in character as a developer who wants to build this project quickly using O
 def main():
     """Test LLM user simulation with different project types"""
     
-    API_KEY = "YOUR_OPENAI_API_KEY_HERE"
+    API_KEY = "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"
     
     test_cases = [
         ("learning_rec", "learning recommendation system that adapts to student progress"),

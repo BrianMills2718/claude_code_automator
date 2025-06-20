@@ -8,7 +8,7 @@ import pexpect
 import time
 from pathlib import Path
 
-API_KEY = "YOUR_OPENAI_API_KEY_HERE"
+API_KEY = "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"
 
 def get_llm_choice(prompt: str, project_intent: str) -> str:
     """Get LLM response for a given prompt"""

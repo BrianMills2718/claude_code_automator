@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 
 # Your OpenAI API key
-OPENAI_API_KEY = "YOUR_OPENAI_API_KEY_HERE"
+OPENAI_API_KEY = "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"
 
 class LLMAutomator:
     """LLM that acts as user for complete CC_AUTOMATOR4 execution"""
@@ -34,7 +34,7 @@ Key behaviors:
    - For milestone questions: respond "N" (accept the generated milestones)
 
 2. For orchestrator execution:
-   - When asked for API keys: provide "YOUR_OPENAI_API_KEY_HERE"
+   - When asked for API keys: provide "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"
    - For confirmations: "y" (proceed with execution)
    - For continue questions: "y" (keep going)
 

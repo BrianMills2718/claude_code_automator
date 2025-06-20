@@ -1,0 +1,2 @@
+2025-06-19 17:25:19,885 - src.claude_code_sdk_fixed_v4 - INFO - 📝 V4 SDK fixes logging to file: /home/brian/cc_automator4/tools/debug/logs/sdk_v4_fixes_20250619_172519.txt
+2025-06-19 17:25:19,885 - src.claude_code_sdk_fixed_v4 - DEBUG - 🔧 Entering managed context for session: session_1750379119885
