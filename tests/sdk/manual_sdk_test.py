@@ -56,7 +56,10 @@ def test_json_repair():
     truncated = '{"type":"assistant","message":{"role":"assistan...'
     repaired = wrapper._repair_truncated_json(truncated)
     assert isinstance(repaired, dict)
-    assert "role" in repaired
+    assert "type" in repaired
+    assert "message" in repaired
+    assert isinstance(repaired["message"], dict)
+    assert "role" in repaired["message"]
     print("✅ JSON repair test passed")
 
 def test_cost_parsing_robustness():
@@ -153,7 +156,10 @@ def test_no_unhandled_exceptions_in_parsing():
     for data in malformed_data:
         try:
             # This should either return a valid result or raise a controlled RuntimeError
-            result = wrapper._patched_parse_message(wrapper, data)
+            # Test via the monkey-patched InternalClient method instead
+            from claude_code_sdk._internal.client import InternalClient
+            client = InternalClient()
+            result = client._parse_message(data)
             assert result is not None
         except RuntimeError:
             # Controlled failures are acceptable

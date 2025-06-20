@@ -110,31 +110,41 @@ class StableSDKWrapper:
         
         logger.info("🔧 Applied consolidated SDK patches")
     
-    def _patched_parse_message(self, data):
+    def _patched_parse_message(instance, data):
         """
         Comprehensive message parser that handles all known error cases
         """
         try:
             # Handle result messages with robust cost parsing
             if data.get("type") == "result":
-                return self._parse_result_message(data)
+                return _stable_sdk._parse_result_message(data)
             
             # Handle assistant messages that may have JSON issues
             if data.get("type") == "assistant":
-                return self._parse_assistant_message(data)
+                return _stable_sdk._parse_assistant_message(data)
             
             # For other message types, try original parser first
-            return self._original_parse_message(self, data)
+            result = _stable_sdk._original_parse_message(instance, data)
+            
+            # If original parser returns None, provide a safe fallback
+            if result is None:
+                return {
+                    "type": "unknown",
+                    "message": f"Unknown message type: {data.get('type', 'missing')}",
+                    "original_data": data
+                }
+            
+            return result
             
         except Exception as e:
-            error_type = self._classify_error(e)
+            error_type = _stable_sdk._classify_error(e)
             logger.error(f"🚨 Message parsing failed: {error_type.value} - {str(e)}")
             
             # Attempt recovery based on error type
             if error_type == SDKErrorType.JSON_DECODE_ERROR:
-                return self._recover_from_json_error(data, e)
+                return _stable_sdk._recover_from_json_error(data, e)
             elif error_type == SDKErrorType.COST_PARSING_ERROR:
-                return self._recover_from_cost_error(data, e)
+                return _stable_sdk._recover_from_cost_error(data, e)
             else:
                 # For unrecoverable errors, re-raise with context
                 raise RuntimeError(f"SDK parsing failed ({error_type.value}): {str(e)}")
@@ -184,8 +194,8 @@ class StableSDKWrapper:
         # Update data with repaired message
         data["message"] = message
         
-        # Use original parser
-        return self._original_parse_message(self, data)
+        # Use original parser  
+        return _stable_sdk._original_parse_message(None, data)
     
     def _repair_truncated_json(self, truncated_json: str) -> Dict[str, Any]:
         """Attempt to repair truncated JSON strings"""
