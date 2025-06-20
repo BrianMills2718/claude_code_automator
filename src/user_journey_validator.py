@@ -8,10 +8,19 @@ import json
 import re
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
+from dataclasses import field
 from dataclasses import dataclass
 import logging
 
 logger = logging.getLogger(__name__)
+
+@dataclass
+class StateValidation:
+    """Defines how to validate state persistence between commands"""
+    check_type: str  # 'file_exists', 'file_contains', 'database_has', 'api_responds'
+    target: str      # File path, database query, API endpoint, etc.
+    expected_value: Optional[str] = None  # Expected content or response
+    description: str = ""  # Human-readable description
 
 @dataclass
 class UserJourney:
@@ -22,6 +31,7 @@ class UserJourney:
     expected_patterns: List[str]  # Regex patterns that should appear in output
     forbidden_patterns: List[str]  # Patterns that indicate failure
     requires_persistence: bool = False  # Whether journey needs data persistence between commands
+    state_validations: List[StateValidation] = field(default_factory=list)  # State checks between commands
 
 @dataclass
 class JourneyResult:
@@ -31,6 +41,7 @@ class JourneyResult:
     outputs: List[str]
     errors: List[str]
     matched_patterns: Dict[str, bool]
+    state_validation_results: Dict[str, bool] = field(default_factory=dict)  # Results of state validations
 
 class UserJourneyValidator:
     """Validates user journeys for generated systems"""
@@ -62,7 +73,20 @@ class UserJourneyValidator:
                             r"Error:",
                             r"Traceback"
                         ],
-                        requires_persistence=True
+                        requires_persistence=True,
+                        state_validations=[
+                            StateValidation(
+                                check_type="file_exists",
+                                target="data/AAPL.json",
+                                description="Verify AAPL data file created by fetch command"
+                            ),
+                            StateValidation(
+                                check_type="file_contains",
+                                target="data/AAPL.json",
+                                expected_value="AAPL",
+                                description="Verify AAPL data file contains symbol data"
+                            )
+                        ]
                     ),
                     UserJourney(
                         name="search_then_fetch",
@@ -115,11 +139,60 @@ class UserJourneyValidator:
             )
         ]
     
+    def validate_state_persistence(self, validations: List[StateValidation]) -> Tuple[Dict[str, bool], List[str]]:
+        """Validate state persistence between commands"""
+        results = {}
+        errors = []
+        
+        if not validations:
+            return {}, []
+            
+        for validation in validations:
+            try:
+                if validation.check_type == "file_exists":
+                    file_path = self.project_dir / validation.target
+                    results[validation.description] = file_path.exists()
+                    if not file_path.exists():
+                        errors.append(f"State validation failed: {validation.description} - File {validation.target} does not exist")
+                        
+                elif validation.check_type == "file_contains":
+                    file_path = self.project_dir / validation.target
+                    if file_path.exists():
+                        content = file_path.read_text()
+                        contains_expected = validation.expected_value in content if validation.expected_value else True
+                        results[validation.description] = contains_expected
+                        if not contains_expected:
+                            errors.append(f"State validation failed: {validation.description} - File {validation.target} does not contain '{validation.expected_value}'")
+                    else:
+                        results[validation.description] = False
+                        errors.append(f"State validation failed: {validation.description} - File {validation.target} does not exist")
+                        
+                elif validation.check_type == "database_has":
+                    # Future: implement database checks
+                    results[validation.description] = True
+                    logger.warning(f"Database validation not yet implemented: {validation.description}")
+                    
+                elif validation.check_type == "api_responds":
+                    # Future: implement API checks  
+                    results[validation.description] = True
+                    logger.warning(f"API validation not yet implemented: {validation.description}")
+                    
+                else:
+                    results[validation.description] = False
+                    errors.append(f"Unknown state validation type: {validation.check_type}")
+                    
+            except Exception as e:
+                results[validation.description] = False
+                errors.append(f"State validation error for {validation.description}: {str(e)}")
+                
+        return results, errors
+    
     def validate_journey(self, journey: UserJourney, timeout: int = 30) -> JourneyResult:
         """Execute and validate a single user journey"""
         outputs = []
         errors = []
         matched_patterns = {pattern: False for pattern in journey.expected_patterns}
+        state_validation_results = {}
         
         for i, command in enumerate(journey.commands):
             logger.info(f"Executing journey '{journey.name}' step {i+1}: {command}")
@@ -147,6 +220,13 @@ class UserJourneyValidator:
                     if re.search(pattern, output, re.MULTILINE | re.IGNORECASE):
                         matched_patterns[pattern] = True
                         
+                # Validate state persistence after each command if required
+                if journey.requires_persistence and journey.state_validations and i == 0:
+                    # After first command, check if state is properly persisted
+                    state_results, state_errors = self.validate_state_persistence(journey.state_validations)
+                    state_validation_results.update(state_results)
+                    errors.extend(state_errors)
+                        
             except subprocess.TimeoutExpired:
                 errors.append(f"Step {i+1}: Command timed out after {timeout}s")
             except Exception as e:
@@ -164,7 +244,8 @@ class UserJourneyValidator:
             success=success,
             outputs=outputs,
             errors=errors,
-            matched_patterns=matched_patterns
+            matched_patterns=matched_patterns,
+            state_validation_results=state_validation_results
         )
     
     def validate_all_journeys(self, milestone_num: int, project_type: str) -> Tuple[bool, List[JourneyResult]]:
