@@ -59,17 +59,48 @@ async with wrapper.managed_session("operation") as session_id:
     # Cleanup is guaranteed even on errors
 ```
 
-### FILE ORGANIZATION
+### FILE ORGANIZATION DIRECTIVES
 
-**Core Stability Files**:
-- `src/claude_code_sdk_stable.py` - Consolidated SDK wrapper (consolidates v2, v4 fixes)
-- `tests/sdk/manual_sdk_test.py` - Test suite that MUST pass 100%
-- `tools/debug/logs/` - SDK operation logs for debugging
+**MANDATORY STRUCTURE - NEVER DEVIATE**:
 
-**Reference Documentation**:
-- See `docs/implementation/` for detailed patterns
-- See `tools/debug/` for diagnostic tools
-- See existing `src/claude_code_sdk_fixed_v*.py` for previous attempts
+```
+cc_automator4/
+├── src/                    # Core implementation code ONLY
+│   ├── *.py               # Main implementation files
+│   └── claude_code_sdk_stable.py  # Consolidated SDK wrapper
+├── tests/                  # ALL test files go here
+│   ├── sdk/               # SDK-specific tests
+│   ├── integration/       # Integration tests
+│   └── *.py              # Any test files (NO tests in root!)
+├── docs/                   # ALL documentation files
+│   ├── *.md              # Documentation (NO .md files in root except CLAUDE.md)
+│   └── implementation/    # Implementation patterns
+├── tools/                  # Development and debug tools
+│   ├── debug/             # Debug logs, analysis files, temp results
+│   └── scripts/           # Utility scripts
+├── example_projects/       # Example implementations
+└── [ROOT FILES]           # ONLY: cli.py, run.py, CLAUDE.md, README.md, requirements.txt
+```
+
+**STRICT PLACEMENT RULES**:
+- ❌ **NO test files in root** - ALL tests go in `tests/`
+- ❌ **NO debug files in root** - ALL analysis/logs go in `tools/debug/`
+- ❌ **NO documentation in root** - ALL .md files go in `docs/` (except CLAUDE.md)
+- ❌ **NO temporary files in root** - Use `tools/debug/` for generated files
+- ✅ **Core logic in src/** - Implementation files only
+- ✅ **Clean root directory** - Maximum 6 files in root
+
+**NAMING CONVENTIONS**:
+- Tests: `test_[component]_[purpose].py`
+- Implementation: `[component]_[purpose].py`
+- Documentation: `[TOPIC]_[TYPE].md`
+- Debug files: `[purpose]_[timestamp].json/txt`
+
+**BEFORE CREATING FILES**:
+1. Check if file belongs in existing directory structure
+2. Use appropriate naming convention
+3. Never place temporary/generated files in root
+4. Ask yourself: "Where would someone logically look for this?"
 
 ### ANTI-PATTERNS TO AVOID
 
