@@ -193,8 +193,11 @@ class V4FixedQueryWrapper:
         finally:
             # Shielded cleanup to prevent cancel scope issues
             try:
-                async with asyncio.timeout(self.cleanup_timeout):
-                    await self._shielded_cleanup(session_id)
+                # Python 3.10 compatibility - use wait_for instead of timeout
+                await asyncio.wait_for(
+                    self._shielded_cleanup(session_id),
+                    timeout=self.cleanup_timeout
+                )
             except asyncio.TimeoutError:
                 logger.warning(f"⏰ Cleanup timeout for session: {session_id}")
             except Exception as cleanup_error:
