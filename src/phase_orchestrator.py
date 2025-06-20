@@ -217,14 +217,87 @@ class StreamingJSONProcessor:
             pass  # Don't let logging errors break execution
     
     def _repair_truncated_json(self, truncated_json: str) -> str:
-        """Attempt to repair truncated JSON strings using same logic as stable SDK"""
+        """Robust JSON repair using simple reconstruction strategy"""
         
-        # Common truncation patterns
+        import re
+        import json
+        
+        # ROBUST REPAIR STRATEGY: Instead of trying to fix broken JSON,
+        # extract essential information and create a valid JSON structure
+        
+        # Check if this is a Claude CLI truncation case
+        has_truncation_marker = "characters truncated" in truncated_json
+        
+        if has_truncation_marker:
+            # Extract essential fields using regex
+            session_id = None
+            message_type = None
+            
+            # Look for session_id
+            session_match = re.search(r'"session_id":"([^"]+)"', truncated_json)
+            if session_match:
+                session_id = session_match.group(1)
+            
+            # Look for message type
+            type_match = re.search(r'"type":"([^"]+)"', truncated_json)
+            if type_match:
+                message_type = type_match.group(1)
+            
+            # Create a simple, valid JSON structure with the extracted info
+            repaired_json = {
+                "type": message_type or "unknown",
+                "truncated": True,
+                "session_id": session_id,
+                "message": {
+                    "content": "[CONTENT_TRUNCATED_DUE_TO_SIZE]",
+                    "note": "Original message was truncated due to size limits"
+                }
+            }
+            
+            # Add additional context if we can detect it
+            if "tool_result" in truncated_json:
+                repaired_json["message"]["tool_result"] = True
+            
+            if "assistant" in truncated_json and "message" in truncated_json:
+                repaired_json["message"]["assistant_response"] = True
+            
+            return json.dumps(repaired_json)
+        
+        # For non-truncation cases, use basic repair strategies
+        
+        # Pattern 1: Handle newline control characters in JSON strings
+        if '\n' in truncated_json and '"content":"' in truncated_json:
+            # Replace unescaped newlines within JSON string values
+            parts = truncated_json.split('"content":"')
+            if len(parts) > 1:
+                content_part = parts[1]
+                # Find the end of the content value (next unescaped quote)
+                in_content = True
+                escaped_content = ""
+                i = 0
+                while i < len(content_part) and in_content:
+                    char = content_part[i]
+                    if char == '"' and (i == 0 or content_part[i-1] != '\\'):
+                        in_content = False
+                        escaped_content += char
+                    elif char == '\n':
+                        escaped_content += '\\n'
+                    elif char == '\r':
+                        escaped_content += '\\r'
+                    elif char == '\t':
+                        escaped_content += '\\t'
+                    else:
+                        escaped_content += char
+                    i += 1
+                
+                # Reconstruct the JSON
+                truncated_json = parts[0] + '"content":"' + escaped_content + content_part[i:]
+        
+        # Pattern 2: Basic truncation patterns
         if truncated_json.endswith('...'):
-            # Remove truncation indicator
             truncated_json = truncated_json[:-3]
         
-        # Try to complete common JSON structures
+        # Pattern 3: Fix unbalanced quotes, brackets, and braces
         if truncated_json.count('"') % 2 == 1:
             truncated_json += '"'
         

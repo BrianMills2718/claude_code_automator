@@ -263,14 +263,81 @@ class StableSDKWrapper:
             }
     
     def _repair_truncated_json(self, truncated_json: str) -> Dict[str, Any]:
-        """Attempt to repair truncated JSON strings"""
+        """Robust JSON repair using simple reconstruction strategy"""
         
-        # Common truncation patterns
+        import re
+        
+        # ROBUST REPAIR STRATEGY: Same as phase_orchestrator
+        
+        # Check if this is a Claude CLI truncation case
+        has_truncation_marker = "characters truncated" in truncated_json
+        
+        if has_truncation_marker:
+            # Extract essential fields using regex
+            session_id = None
+            message_type = None
+            
+            # Look for session_id
+            session_match = re.search(r'"session_id":"([^"]+)"', truncated_json)
+            if session_match:
+                session_id = session_match.group(1)
+            
+            # Look for message type
+            type_match = re.search(r'"type":"([^"]+)"', truncated_json)
+            if type_match:
+                message_type = type_match.group(1)
+            
+            # Create a simple, valid JSON structure
+            repaired_json = {
+                "type": message_type or "unknown",
+                "truncated": True,
+                "session_id": session_id,
+                "message": {
+                    "content": "[CONTENT_TRUNCATED_DUE_TO_SIZE]",
+                    "note": "Original message was truncated due to size limits"
+                }
+            }
+            
+            # Add additional context if we can detect it
+            if "tool_result" in truncated_json:
+                repaired_json["message"]["tool_result"] = True
+            
+            if "assistant" in truncated_json and "message" in truncated_json:
+                repaired_json["message"]["assistant_response"] = True
+            
+            return repaired_json
+        
+        # For non-truncation cases, use basic repair strategies
+        
+        # Handle newline control characters
+        if '\n' in truncated_json and '"content":"' in truncated_json:
+            parts = truncated_json.split('"content":"')
+            if len(parts) > 1:
+                content_part = parts[1]
+                in_content = True
+                escaped_content = ""
+                i = 0
+                while i < len(content_part) and in_content:
+                    char = content_part[i]
+                    if char == '"' and (i == 0 or content_part[i-1] != '\\'):
+                        in_content = False
+                        escaped_content += char
+                    elif char == '\n':
+                        escaped_content += '\\n'
+                    elif char == '\r':
+                        escaped_content += '\\r'
+                    elif char == '\t':
+                        escaped_content += '\\t'
+                    else:
+                        escaped_content += char
+                    i += 1
+                
+                truncated_json = parts[0] + '"content":"' + escaped_content + content_part[i:]
+        
+        # Basic repair patterns
         if truncated_json.endswith('...'):
-            # Remove truncation indicator
             truncated_json = truncated_json[:-3]
         
-        # Try to complete common JSON structures
         if truncated_json.count('"') % 2 == 1:
             truncated_json += '"'
         
@@ -395,6 +462,9 @@ class StableSDKWrapper:
                 os.environ['PYTHONUNBUFFERED'] = '1'
                 os.environ['PYTHONIOENCODING'] = 'utf-8'
                 
+                # CRITICAL FIX: Monkey patch the subprocess transport to handle multiple JSON objects
+                self._apply_subprocess_json_fix()
+                
                 # Execute the query using the patched SDK (keyword-only arguments)
                 try:
                     async for message in claude_code_sdk.query(prompt=prompt, options=options):
@@ -435,6 +505,63 @@ class StableSDKWrapper:
                     "error_type": error_type.value,
                     "session_id": session_id
                 }
+    
+    def _apply_subprocess_json_fix(self):
+        """Apply monkey patch to fix subprocess JSON parsing for multiple objects"""
+        
+        try:
+            # Import the subprocess transport module
+            import claude_code_sdk._internal.transport.subprocess_cli as subprocess_cli
+            
+            # Store the original json.loads function if not already stored
+            if not hasattr(subprocess_cli, '_original_json_loads'):
+                subprocess_cli._original_json_loads = subprocess_cli.json.loads
+            
+            # Define our patched json.loads function
+            def patched_json_loads(s, **kwargs):
+                """Patched json.loads that handles multiple JSON objects on separate lines"""
+                try:
+                    # Try normal parsing first
+                    return subprocess_cli._original_json_loads(s, **kwargs)
+                except subprocess_cli.json.JSONDecodeError as e:
+                    # Check if this is an "Extra data" error (multiple JSON objects)
+                    if "Extra data" in str(e):
+                        logger.debug(f"🔧 Detected multiple JSON objects, splitting by lines...")
+                        
+                        # Split by lines and try to parse the first valid JSON object
+                        lines = s.strip().split('\n')
+                        for line in lines:
+                            line = line.strip()
+                            if line:
+                                try:
+                                    result = subprocess_cli._original_json_loads(line, **kwargs)
+                                    logger.debug(f"🔧 Successfully parsed first JSON object from multi-line input")
+                                    return result
+                                except subprocess_cli.json.JSONDecodeError:
+                                    continue
+                        
+                        # If all lines fail, raise the original error
+                        raise e
+                    else:
+                        # For other JSON errors, try our repair mechanism
+                        logger.debug(f"🔧 Attempting JSON repair for: {str(e)}")
+                        try:
+                            repaired = self._repair_truncated_json(s)
+                            if isinstance(repaired, str):
+                                return subprocess_cli._original_json_loads(repaired, **kwargs)
+                            else:
+                                return repaired
+                        except:
+                            # If repair fails, raise original error
+                            raise e
+            
+            # Apply the monkey patch
+            subprocess_cli.json.loads = patched_json_loads
+            logger.debug(f"🔧 Applied subprocess JSON fix (multiple objects handling)")
+            
+        except Exception as patch_error:
+            logger.warning(f"⚠️ Could not apply subprocess JSON fix: {patch_error}")
+            # Continue without the patch - better to try than fail completely
     
     def get_operation_stats(self) -> Dict[str, Any]:
         """Get comprehensive statistics about SDK operations"""
