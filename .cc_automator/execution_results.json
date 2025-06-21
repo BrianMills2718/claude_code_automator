@@ -1,12 +1,12 @@
 {
   "project_dir": "/home/brian/cc_automator4/example_projects/ml_portfolio_analyzer",
-  "total_cost": 0.0,
+  "total_cost": 0.6417412,
   "milestones_completed": 0,
   "total_milestones": 4,
   "sessions": {
-    "milestone_1_research": "532a472f-fc31-4d93-8ba3-7729e2262642",
-    "milestone_1_planning": "490c2ef4-d83b-4835-8a1e-e30d9a6a38ff",
-    "milestone_1_implement": "a5ab0a14-09cc-4fe6-944b-0f8a1f0fc565",
+    "milestone_1_research": "def94de3-0d0f-4bcb-854e-94b35434a94e",
+    "milestone_1_planning": "c5517eb9-c0a7-41fe-93ff-1abf3614ae78",
+    "milestone_1_implement": "08f71afb-5c1e-443f-a50f-5dfc99e37e8a",
     "milestone_1_architecture": "83e34a76-ea2c-4556-af8d-5328281fc93c",
     "milestone_1_test": "c4d1948b-99d3-426e-8049-e356c7a037af",
     "milestone_1_integration": "a9e507a5-55ff-4451-9422-aa669b3b4270",

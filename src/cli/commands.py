@@ -7,7 +7,7 @@ from rich.console import Console
 from rich.table import Table
 import pandas as pd
 
-from .. import settings
+from ..config import settings
 from ..data_sources.base import DataSourceBase, MarketData
 from ..data_sources.alpha_vantage import AlphaVantageAdapter
 from ..data_sources.yahoo_finance import YahooFinanceAdapter
@@ -21,7 +21,7 @@ console = Console()
 def get_pipeline() -> DataPipeline:
     """Get configured data pipeline."""
     sources: List[DataSourceBase] = [YahooFinanceAdapter()]
-    if settings.ALPHA_VANTAGE_API_KEY:
+    if settings.ALPHA_VANTAGE_API_KEY and settings.ALPHA_VANTAGE_API_KEY.get_secret_value():
         sources.append(AlphaVantageAdapter())
     return DataPipeline(sources)
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import redis
-from .. import settings
+from ..config import settings
 
 @dataclass
 class MarketDataKey:
