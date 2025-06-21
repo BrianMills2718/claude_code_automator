@@ -1,0 +1,9 @@
+name: e2e
+description: Verify end-to-end functionality
+args:
+  - name: milestone_name
+    description: Name of the milestone
+    required: true
+  - name: milestone_number
+    description: Milestone number
+    required: true
